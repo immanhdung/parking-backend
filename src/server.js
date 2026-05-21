@@ -109,7 +109,6 @@ if (process.env.NODE_ENV !== 'test') {
 // ========================
 // SWAGGER DOCS
 // ========================
-if (process.env.NODE_ENV !== 'production') {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
@@ -120,7 +119,7 @@ if (process.env.NODE_ENV !== 'production') {
     },
   }));
   logger.info(`📖 Swagger docs available at http://localhost:${process.env.PORT || 5000}/api-docs`);
-}
+
 
 // Swagger JSON endpoint
 app.get('/api-docs.json', (req, res) => {
