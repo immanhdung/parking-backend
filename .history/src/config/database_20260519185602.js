@@ -11,9 +11,7 @@ const connectDB = async () => {
       autoIndex: process.env.NODE_ENV !== 'production',
     });
 
-    logger.info(
-  `✅ MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`
-    );
+    logger.info(`✅ MongoDB Connected: ${conn.connection.host}`);
 
     mongoose.connection.on('error', (err) => {
       logger.error(`MongoDB connection error: ${err}`);
