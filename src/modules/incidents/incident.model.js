@@ -90,7 +90,6 @@ incidentSchema.index({ parkingLot: 1, status: 1 });
 incidentSchema.index({ type: 1 });
 incidentSchema.index({ severity: 1, status: 1 });
 incidentSchema.index({ reportedBy: 1 });
-incidentSchema.index({ incidentCode: 1 });
 incidentSchema.index({ isDeleted: 1 });
 
 incidentSchema.pre(/^find/, function (next) {

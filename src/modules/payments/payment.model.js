@@ -65,7 +65,6 @@ const paymentSchema = new mongoose.Schema(
 paymentSchema.index({ parkingSession: 1 });
 paymentSchema.index({ user: 1 });
 paymentSchema.index({ parkingLot: 1, status: 1 });
-paymentSchema.index({ invoiceCode: 1 });
 paymentSchema.index({ method: 1, status: 1 });
 paymentSchema.index({ createdAt: -1 });
 

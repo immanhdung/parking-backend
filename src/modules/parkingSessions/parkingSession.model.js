@@ -120,7 +120,6 @@ parkingSessionSchema.index({ user: 1, status: 1 });
 parkingSessionSchema.index({ 'vehicleInfo.licensePlate': 1 });
 parkingSessionSchema.index({ entryTime: -1 });
 parkingSessionSchema.index({ status: 1, isOvertime: 1 });
-parkingSessionSchema.index({ sessionCode: 1 });
 parkingSessionSchema.index({ booking: 1 });
 
 // Virtual: live duration

@@ -77,7 +77,6 @@ const parkingLotSchema = new mongoose.Schema(
 );
 
 // Indexes
-parkingLotSchema.index({ code: 1 });
 parkingLotSchema.index({ status: 1 });
 parkingLotSchema.index({ manager: 1 });
 parkingLotSchema.index({ isDeleted: 1 });

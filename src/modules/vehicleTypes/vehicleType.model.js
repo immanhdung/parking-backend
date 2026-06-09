@@ -53,7 +53,6 @@ const vehicleTypeSchema = new mongoose.Schema(
   }
 );
 
-vehicleTypeSchema.index({ code: 1 });
 vehicleTypeSchema.index({ isActive: 1 });
 vehicleTypeSchema.index({ isDeleted: 1 });
 

@@ -165,9 +165,36 @@ router.post('/', restrictTo('system_admin'), userController.createUser);
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: Nguyen Van A
+ *               phone:
+ *                 type: string
+ *                 example: "0912345678"
+ *               role:
+ *                 type: string
+ *                 enum: [system_admin, parking_manager, parking_staff, parking_user]
+ *                 example: parking_staff
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive, blocked, pending]
+ *                 example: active
+ *               assignedParkingLot:
+ *                 type: string
+ *                 description: MongoDB ObjectId of the parking lot
+ *                 example: 60d5ec49f1b2c72b9c8e4d3a
  *     responses:
  *       200:
  *         description: User updated
+ *       404:
+ *         description: User not found
  *   delete:
  *     summary: Delete user (admin only)
  *     tags: [Users]
