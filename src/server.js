@@ -49,17 +49,35 @@ app.use(helmet({
 // CORS
 app.use(cors({
   origin: (origin, callback) => {
-    const allowedOrigins = [
+    const rawOrigins = [
       process.env.CLIENT_URL,
       process.env.ADMIN_URL,
       'http://localhost:3000',
       'http://localhost:3001',
     ].filter(Boolean);
 
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Support comma-separated origins in env variables
+    const parsedOrigins = [];
+    rawOrigins.forEach(originStr => {
+      if (originStr.includes(',')) {
+        parsedOrigins.push(...originStr.split(',').map(item => item.trim()));
+      } else {
+        parsedOrigins.push(originStr.trim());
+      }
+    });
+
+    if (process.env.ALLOWED_ORIGINS) {
+      parsedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(item => item.trim()));
+    }
+
+    // Sanitize origins by stripping trailing slashes
+    const allowedOrigins = parsedOrigins.map(url => url.replace(/\/$/, ''));
+
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      logger.warn(`CORS Blocked: Origin '${origin}' is not in allowed origins: ${JSON.stringify(allowedOrigins)}`);
+      callback(new Error(`Not allowed by CORS: '${origin}'`));
     }
   },
   credentials: true,
