@@ -35,14 +35,7 @@ const httpServer = http.createServer(app);
 // SECURITY MIDDLEWARE
 // ========================
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
-    },
-  },
+  contentSecurityPolicy: false, // Disabled to allow Swagger UI to work properly
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -54,6 +47,8 @@ app.use(cors({
       process.env.ADMIN_URL,
       'http://localhost:3000',
       'http://localhost:3001',
+      `http://localhost:${process.env.PORT || 5000}`,
+      `http://127.0.0.1:${process.env.PORT || 5000}`,
     ].filter(Boolean);
 
     if (!origin || allowedOrigins.includes(origin)) {

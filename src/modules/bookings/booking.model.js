@@ -98,7 +98,6 @@ bookingSchema.index({ user: 1, status: 1 });
 bookingSchema.index({ parkingLot: 1, status: 1 });
 bookingSchema.index({ parkingLot: 1, scheduledDate: 1 });
 bookingSchema.index({ assignedSlot: 1 });
-bookingSchema.index({ bookingCode: 1 });
 bookingSchema.index({ status: 1, scheduledDate: 1 });
 bookingSchema.index({ isDeleted: 1 });
 
