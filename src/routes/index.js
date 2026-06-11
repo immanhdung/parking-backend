@@ -15,6 +15,7 @@ const reportRoutes = require('../modules/reports/routes/report.routes');
 const notificationRoutes = require('../modules/notifications/routes/notification.routes');
 const feedbackRoutes = require('../modules/feedbacks/routes/feedback.routes');
 const incidentRoutes = require('../modules/incidents/routes/incident.routes');
+const vehicleRoutes = require('../modules/vehicles/routes/vehicle.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -31,6 +32,7 @@ router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/feedbacks', feedbackRoutes);
 router.use('/incidents', incidentRoutes);
+router.use('/vehicles', vehicleRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

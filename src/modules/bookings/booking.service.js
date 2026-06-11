@@ -1,6 +1,7 @@
 const Booking = require('./booking.model');
 const ParkingSlot = require('../parkingSlots/parkingSlot.model');
 const VehicleType = require('../vehicleTypes/vehicleType.model');
+const Vehicle = require('../vehicles/vehicle.model');
 const ParkingLot = require('../parkingLots/parkingLot.model');
 const notificationService = require('../notifications/notification.service');
 const ApiError = require('../../utils/ApiError');
@@ -82,7 +83,7 @@ class BookingService {
   }
 
   async create(data, userId) {
-    const { parkingLot, vehicleType, scheduledDate, startTime, endTime, vehicleInfo, floorId, zoneId, notes } = data;
+    const { parkingLot, vehicleType, scheduledDate, startTime, endTime, vehicleInfo, vehicleId, floorId, zoneId, notes } = data;
 
     // Validate parking lot
     const lot = await ParkingLot.findById(parkingLot);
@@ -93,8 +94,24 @@ class BookingService {
       throw ApiError.badRequest('This parking lot does not accept online bookings.');
     }
 
+    // If user selected a saved vehicle, auto-fill vehicleType and vehicleInfo
+    let resolvedVehicleType = vehicleType;
+    let resolvedVehicleInfo = vehicleInfo;
+    if (vehicleId) {
+      const savedVehicle = await Vehicle.findById(vehicleId).populate('vehicleType');
+      if (!savedVehicle || savedVehicle.user.toString() !== userId.toString()) {
+        throw ApiError.badRequest('Selected vehicle not found or does not belong to you.');
+      }
+      resolvedVehicleType = savedVehicle.vehicleType._id;
+      resolvedVehicleInfo = {
+        licensePlate: savedVehicle.licensePlate,
+        vehicleModel: savedVehicle.vehicleModel,
+        vehicleColor: savedVehicle.vehicleColor,
+      };
+    }
+
     // Validate vehicle type
-    const vType = await VehicleType.findById(vehicleType);
+    const vType = await VehicleType.findById(resolvedVehicleType);
     if (!vType || !vType.isActive) {
       throw ApiError.badRequest('Vehicle type is not available.');
     }
@@ -111,7 +128,7 @@ class BookingService {
     // Find optimal available slot (AI suggestion)
     const filter = {
       parkingLot,
-      vehicleType,
+      vehicleType: resolvedVehicleType,
       status: 'available',
     };
     if (floorId) filter.floor = floorId;
@@ -134,8 +151,8 @@ class BookingService {
       floor: floorId || (recommendedSlot?.floor?._id),
       zone: zoneId || (recommendedSlot?.zone?._id),
       assignedSlot: recommendedSlot?._id,
-      vehicleType,
-      vehicleInfo,
+      vehicleType: resolvedVehicleType,
+      vehicleInfo: resolvedVehicleInfo,
       scheduledDate: new Date(scheduledDate),
       startTime,
       endTime,
