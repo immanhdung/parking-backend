@@ -178,6 +178,23 @@ const suggestOptimalSlot = (availableSlots, vehicleType) => {
   return sorted[0];
 };
 
+/**
+ * Generate unique transfer content for bank payments
+ * Format: PAR + DDMM + 6 random alphanumeric chars
+ * Example: PAR1606A3B2C1
+ */
+const generateTransferContent = () => {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let random = '';
+  for (let i = 0; i < 6; i++) {
+    random += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `PAR${dd}${mm}${random}`;
+};
+
 module.exports = {
   generateToken,
   generateInvoiceCode,
@@ -190,4 +207,5 @@ module.exports = {
   getDateRange,
   isPeakHour,
   suggestOptimalSlot,
+  generateTransferContent,
 };

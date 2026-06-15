@@ -118,7 +118,13 @@ class BookingService {
 
     // Calculate estimated duration
     const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
+    let [endH, endM] = endTime.split(':').map(Number);
+    
+    // Handle cross-midnight bookings
+    if (endH < startH || (endH === startH && endM < startM)) {
+      endH += 24;
+    }
+    
     const durationHours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
 
     if (durationHours <= 0) {
