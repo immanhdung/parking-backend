@@ -72,6 +72,7 @@ const parkingSessionSchema = new mongoose.Schema(
     baseFee: { type: Number, default: 0 },
     overtimeFee: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
+    advancePayment: { type: Number, default: 0 }, // Pre-paid amount from booking
     totalFee: { type: Number, default: 0 },
     // Overtime
     isOvertime: { type: Boolean, default: false },

@@ -10,7 +10,15 @@ const paymentSchema = new mongoose.Schema(
     parkingSession: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ParkingSession',
-      required: true,
+    },
+    booking: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Booking',
+    },
+    paymentType: {
+      type: String,
+      enum: ['booking', 'session_checkout'],
+      default: 'session_checkout',
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -42,6 +50,12 @@ const paymentSchema = new mongoose.Schema(
     // Payment gateway data
     transactionId: String, // Gateway transaction ID
     gatewayResponse: { type: mongoose.Schema.Types.Mixed },
+    // Bank transfer (VietQR / SEPay)
+    transferContent: {
+      type: String,
+      index: true,
+    }, // Unique code: PAR + DDMM + 6 chars
+    bankTransferQrUrl: String, // SEPay QR image URL
     // Cash payment
     cashReceived: Number,
     cashChange: Number,
