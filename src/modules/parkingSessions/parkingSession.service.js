@@ -154,6 +154,7 @@ class ParkingSessionService {
       checkInStaff: staffId,
       status: 'active',
       ticketNumber,
+      advancePayment: booking && booking.paymentStatus === 'paid' ? booking.estimatedFee : 0,
     });
 
     // Update slot status to occupied
@@ -247,18 +248,26 @@ class ParkingSessionService {
     }
 
     const totalFee = fee + overtimeFee;
+    
+    // Deduct advance payment
+    const feeToPay = Math.max(0, totalFee - session.advancePayment);
 
-    // Update session
     session.exitTime = exitTime;
     session.durationMs = durationMs;
-    session.durationHours = Math.round(durationHours * 100) / 100;
+    session.durationHours = durationHours;
     session.baseFee = fee;
     session.overtimeFee = overtimeFee;
-    session.totalFee = totalFee;
+    session.totalFee = feeToPay; // This is the REMAINING amount to be paid now
     session.isOvertime = isOvertime;
-    session.overtimeHours = Math.round(overtimeHours * 100) / 100;
-    session.status = 'completed';
+    session.overtimeHours = overtimeHours;
     session.checkOutStaff = staffId;
+    session.status = 'completed';
+
+    // If fully pre-paid, auto mark as paid
+    if (feeToPay === 0 && session.advancePayment > 0) {
+      session.paymentStatus = 'paid';
+    }
+
     await session.save();
 
     // Free the slot

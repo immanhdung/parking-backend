@@ -3,6 +3,39 @@ const router = express.Router();
 const ctrl = require('../payment.controller');
 const { protect, restrictTo } = require('../../../middleware/auth');
 
+/**
+ * @swagger
+ * /payments/sepay-webhook:
+ *   post:
+ *     summary: SEPay webhook callback (public endpoint)
+ *     description: |
+ *       Called by SEPay when a bank transfer is received.
+ *       Matches transfer content (PAR code) to confirm pending payments.
+ *       No authentication required.
+ *     tags: [Payments]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               id: { type: number }
+ *               gateway: { type: string, example: MBBank }
+ *               transactionDate: { type: string }
+ *               accountNumber: { type: string }
+ *               content: { type: string, example: PAR1606A3B2C1 }
+ *               transferType: { type: string, enum: [in, out] }
+ *               transferAmount: { type: number }
+ *               referenceCode: { type: string }
+ *     responses:
+ *       200:
+ *         description: Webhook processed
+ */
+router.post('/sepay-webhook', ctrl.sepayWebhook);
+
+// All routes below require authentication
 router.use(protect);
 
 /**
@@ -17,7 +50,7 @@ router.use(protect);
  *         schema: { type: string, enum: [pending, completed, failed, refunded] }
  *       - in: query
  *         name: method
- *         schema: { type: string, enum: [cash, momo, vnpay] }
+ *         schema: { type: string, enum: [cash, momo, vnpay, bank_transfer] }
  *       - in: query
  *         name: startDate
  *         schema: { type: string, format: date }
@@ -73,9 +106,10 @@ router.post('/cash', restrictTo('system_admin', 'parking_manager', 'parking_staf
 
 /**
  * @swagger
- * /payments/momo/initiate:
+ * /payments/bank-transfer/initiate:
  *   post:
- *     summary: Initiate MoMo payment
+ *     summary: Initiate bank transfer payment with SEPay QR code
+ *     description: Creates a pending payment and returns QR code URL for customer to scan
  *     tags: [Payments]
  *     requestBody:
  *       required: true
@@ -87,40 +121,69 @@ router.post('/cash', restrictTo('system_admin', 'parking_manager', 'parking_staf
  *             properties:
  *               sessionId:
  *                 type: string
- *               returnUrl:
- *                 type: string
+ *                 description: Parking session ID (must be checked out)
  *     responses:
- *       200:
- *         description: MoMo payment URL and QR code
+ *       201:
+ *         description: QR code generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 qrUrl: { type: string, description: SEPay QR image URL }
+ *                 transferContent: { type: string, example: PAR1606A3B2C1 }
+ *                 amount: { type: number }
+ *                 bankInfo:
+ *                   type: object
+ *                   properties:
+ *                     bankName: { type: string }
+ *                     accountNumber: { type: string }
+ *                     accountName: { type: string }
  */
-router.post('/momo/initiate', ctrl.initiateMomo);
+router.post('/bank-transfer/initiate', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.initiateBankTransfer);
 
 /**
  * @swagger
- * /payments/confirm:
+ * /payments/bank-transfer/booking/initiate:
  *   post:
- *     summary: Confirm payment callback (from payment gateway)
+ *     summary: Initiate bank transfer payment for booking
+ *     description: Creates a pending payment and returns QR code URL for booking
  *     tags: [Payments]
- *     security: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [bookingId]
  *             properties:
- *               paymentId:
+ *               bookingId:
  *                 type: string
- *               transactionId:
- *                 type: string
- *               gatewayResponse:
- *                 type: object
+ *     responses:
+ *       201:
+ *         description: QR code generated
+ */
+router.post('/bank-transfer/booking/initiate', ctrl.initiateBookingBankTransfer);
+
+/**
+ * @swagger
+ * /payments/bank-transfer/{id}/status:
+ *   get:
+ *     summary: Check bank transfer payment status
+ *     tags: [Payments]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Payment confirmed
+ *         description: Payment status
  */
-router.post('/confirm', ctrl.confirmPayment);
+router.get('/bank-transfer/:id/status', ctrl.checkBankTransferStatus);
 
+router.post('/momo/initiate', ctrl.initiateMomo);
+router.post('/confirm', ctrl.confirmPayment);
 router.get('/:id', ctrl.getById);
 router.post('/:id/refund', restrictTo('system_admin', 'parking_manager'), ctrl.refund);
 

@@ -1,5 +1,6 @@
 const Payment = require('./payment.model');
 const ParkingSession = require('../parkingSessions/parkingSession.model');
+const Booking = require('../bookings/booking.model');
 const notificationService = require('../notifications/notification.service');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
@@ -217,6 +218,291 @@ class PaymentService {
     ]);
 
     return result[0] || { totalRevenue: 0, totalTransactions: 0, avgTransaction: 0 };
+  }
+
+  /**
+   * Initiate bank transfer payment with VietQR / SEPay QR code for SESSION CHECKOUT
+   * Creates a pending payment and returns QR code URL for customer to scan
+   */
+  async initiateBankTransfer(sessionId, staffId) {
+    const { generateTransferContent } = require('../../utils/helpers');
+    const logger = require('../../utils/logger');
+
+    const session = await ParkingSession.findById(sessionId);
+    if (!session) throw ApiError.notFound('Parking session not found.');
+    if (session.status !== 'completed') {
+      throw ApiError.badRequest('Session must be completed (checked out) before payment.');
+    }
+    if (session.paymentStatus === 'paid') {
+      throw ApiError.badRequest('Session is already paid.');
+    }
+
+    const amount = session.totalFee;
+    if (!amount || amount <= 0) {
+      throw ApiError.badRequest('Invalid payment amount.');
+    }
+
+    // Generate unique transfer content: PAR + DDMM + 6 random chars
+    const transferContent = generateTransferContent();
+
+    // Use official VietQR standard for best compatibility with MoMo/ZaloPay
+    // VietQR uses 'addInfo' parameter which forces bank apps to pre-fill the transfer message
+    const bankId = process.env.SEPAY_BANK_ID || 'MB'; // 'MB' is the standard short name
+    const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
+    const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+
+    // Create pending bank_transfer payment
+    const payment = await Payment.create({
+      parkingSession: sessionId,
+      user: session.user,
+      parkingLot: session.parkingLot,
+      amount,
+      baseFee: session.baseFee,
+      overtimeFee: session.overtimeFee,
+      method: 'bank_transfer',
+      status: 'pending',
+      transferContent,
+      bankTransferQrUrl: qrUrl,
+      receivedBy: staffId,
+    });
+
+    // Link payment to session
+    session.payment = payment._id;
+    await session.save();
+
+    logger.info(`[Payment] Bank transfer initiated: ${transferContent} | Amount: ${amount} VND | Session: ${session.sessionCode}`);
+
+    return {
+      payment,
+      qrUrl,
+      transferContent,
+      amount,
+      bankInfo: {
+        bankName: bankId,
+        accountNumber,
+        accountName: process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING',
+      },
+    };
+  }
+
+  /**
+   * Initiate bank transfer payment for BOOKING
+   */
+  async initiateBookingBankTransfer(bookingId, userId) {
+    const { generateTransferContent } = require('../../utils/helpers');
+    const logger = require('../../utils/logger');
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) throw ApiError.notFound('Booking not found.');
+    if (booking.paymentStatus === 'paid') {
+      throw ApiError.badRequest('Booking is already paid.');
+    }
+
+    const amount = booking.estimatedFee;
+    if (!amount || amount <= 0) {
+      throw ApiError.badRequest('Invalid payment amount.');
+    }
+
+    const transferContent = generateTransferContent();
+
+    const bankId = process.env.SEPAY_BANK_ID || 'MB';
+    const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
+    const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+
+    const payment = await Payment.create({
+      booking: bookingId,
+      user: userId,
+      parkingLot: booking.parkingLot,
+      amount,
+      baseFee: amount,
+      overtimeFee: 0,
+      method: 'bank_transfer',
+      status: 'pending',
+      transferContent,
+      bankTransferQrUrl: qrUrl,
+      paymentType: 'booking',
+    });
+
+    return {
+      payment,
+      transferContent,
+      amount,
+      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME },
+      qrUrl,
+    };
+  }
+
+  /**
+   * Handle SEPay webhook callback
+   * SEPay sends POST when a bank transfer is received
+   * We match the transfer content to find and confirm the pending payment
+   */
+  async handleSepayWebhook(webhookData, io) {
+    const logger = require('../../utils/logger');
+
+    logger.info(`[SEPay Webhook] Received: ${JSON.stringify(webhookData)}`);
+
+    const {
+      content,           // Transfer content (contains our PAR code)
+      transferAmount,    // Amount transferred
+      transferType,      // 'in' = money received
+      transactionDate,
+      id,
+      gateway,
+      accountNumber,
+      referenceCode,
+    } = webhookData;
+
+    // Only process incoming transfers
+    if (transferType !== 'in') {
+      logger.info('[SEPay Webhook] Skipping: not an incoming transfer');
+      return { matched: false, reason: 'Not an incoming transfer' };
+    }
+
+    if (!content) {
+      logger.warn('[SEPay Webhook] Skipping: no content in transfer');
+      return { matched: false, reason: 'No transfer content' };
+    }
+
+    // Extract PAR code from transfer content
+    const parMatch = content.match(/PAR\d{4}[A-Z0-9]{6}/i);
+    const transferContentCode = parMatch ? parMatch[0].toUpperCase() : null;
+    let payment = null;
+
+    if (transferContentCode) {
+      logger.info(`[SEPay Webhook] Extracted PAR code: ${transferContentCode}`);
+      // Find pending payment with matching transfer content
+      payment = await Payment.findOne({
+        transferContent: transferContentCode,
+        status: 'pending',
+        method: 'bank_transfer',
+      }).populate('parkingSession').populate('booking');
+    }
+
+    // Fallback: If MoMo/ZaloPay overwrites the transfer content, match by EXACT AMOUNT
+    if (!payment) {
+      logger.warn(`[SEPay Webhook] PAR code not found. Falling back to amount matching: ${transferAmount} VND`);
+      const pendingPayments = await Payment.find({
+        amount: transferAmount,
+        status: 'pending',
+        method: 'bank_transfer',
+      }).populate('parkingSession').populate('booking');
+
+      if (pendingPayments.length === 1) {
+        payment = pendingPayments[0];
+        logger.info(`[SEPay Webhook] Successfully matched payment exactly by amount: ${payment.invoiceCode}`);
+      } else if (pendingPayments.length > 1) {
+        logger.warn(`[SEPay Webhook] Multiple pending payments found with amount ${transferAmount}. Cannot auto-confirm.`);
+        return { matched: false, reason: 'Multiple pending payments with same amount. Manual confirmation required.' };
+      }
+    }
+
+    if (!payment) {
+      logger.warn(`[SEPay Webhook] No pending payment matched for webhook.`);
+      return { matched: false, reason: 'No matching pending payment found (by content or amount)' };
+    }
+
+    // Verify amount (allow small tolerance for bank fees)
+    if (transferAmount < payment.amount) {
+      logger.warn(`[SEPay Webhook] Amount mismatch: expected ${payment.amount}, got ${transferAmount}`);
+      return { matched: false, reason: `Insufficient amount: expected ${payment.amount}, received ${transferAmount}` };
+    }
+
+    // Confirm payment
+    payment.status = 'completed';
+    payment.transactionId = referenceCode || String(id);
+    payment.paidAt = transactionDate ? new Date(transactionDate) : new Date();
+    payment.gatewayResponse = webhookData;
+    await payment.save();
+
+    // Update parent document and emit socket events
+    if (payment.paymentType === 'booking' && payment.booking) {
+      const booking = await Booking.findById(payment.booking._id || payment.booking);
+      if (booking) {
+        booking.paymentStatus = 'paid';
+        booking.payment = payment._id;
+        await booking.save();
+        logger.info(`[SEPay Webhook] Booking ${booking.bookingCode} marked as paid.`);
+      }
+
+      if (io) {
+        io.emit('bookingPaymentConfirmed', {
+          bookingId: booking ? booking._id : payment.booking,
+          paymentId: payment._id,
+          amount: payment.amount,
+          invoiceCode: payment.invoiceCode,
+          transferContent: transferContentCode,
+        });
+      }
+    } else if (payment.parkingSession) {
+      const session = await ParkingSession.findById(payment.parkingSession._id || payment.parkingSession);
+      if (session) {
+        session.paymentStatus = 'paid';
+        session.payment = payment._id;
+        await session.save();
+        logger.info(`[SEPay Webhook] Session ${session.sessionCode} marked as paid.`);
+      }
+
+      if (io) {
+        const lotId = (payment.parkingLot || '').toString();
+        io.to(`parkingLot:${lotId}`).emit('paymentConfirmed', {
+          paymentId: payment._id,
+          invoiceCode: payment.invoiceCode,
+          sessionId: session ? session._id : payment.parkingSession,
+          amount: payment.amount,
+          method: 'bank_transfer',
+          transferContent: transferContentCode,
+        });
+        io.emit('paymentConfirmed', {
+          paymentId: payment._id,
+          invoiceCode: payment.invoiceCode,
+          amount: payment.amount,
+          transferContent: transferContentCode,
+        });
+      }
+    }
+
+    // Notify user
+    if (payment.user) {
+      await notificationService.create({
+        recipient: payment.user,
+        type: 'payment_success',
+        title: 'Bank Transfer Confirmed',
+        message: `Payment of ${payment.amount.toLocaleString('vi-VN')} VND confirmed. Invoice: ${payment.invoiceCode}`,
+        data: { paymentId: payment._id, invoiceCode: payment.invoiceCode },
+      });
+    }
+
+    logger.info(`[SEPay Webhook] ✅ Payment confirmed: ${payment.invoiceCode} | ${transferContentCode} | ${payment.amount} VND`);
+
+    return {
+      matched: true,
+      paymentId: payment._id,
+      invoiceCode: payment.invoiceCode,
+      amount: payment.amount,
+    };
+  }
+
+  /**
+   * Check bank transfer payment status (polling from FE)
+   */
+  async checkBankTransferStatus(paymentId) {
+    const payment = await Payment.findById(paymentId)
+      .select('status transferContent amount invoiceCode paidAt')
+      .lean();
+
+    if (!payment) throw ApiError.notFound('Payment not found.');
+
+    return {
+      status: payment.status,
+      isPaid: payment.status === 'completed',
+      transferContent: payment.transferContent,
+      amount: payment.amount,
+      invoiceCode: payment.invoiceCode,
+      paidAt: payment.paidAt,
+    };
   }
 }
 
