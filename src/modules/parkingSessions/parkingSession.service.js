@@ -20,7 +20,11 @@ class ParkingSessionService {
 
     // Manager/Staff: only their lot
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      filter.parkingLot = user.assignedParkingLot;
+      if (user.assignedParkingLot) {
+        filter.parkingLot = user.assignedParkingLot;
+      } else if (parkingLot) {
+        filter.parkingLot = parkingLot;
+      }
     } else if (parkingLot) {
       filter.parkingLot = parkingLot;
     }
