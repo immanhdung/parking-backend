@@ -59,6 +59,23 @@ router.post('/', restrictTo('system_admin'), ctrl.create);
 
 /**
  * @swagger
+ * /parking-lots/available-staff:
+ *   get:
+ *     summary: Get unassigned staff (manager/admin)
+ *     tags: [Parking Lots - Staff Assignment]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Search by name, email or phone
+ *     responses:
+ *       200:
+ *         description: List of available staff
+ */
+router.get('/available-staff', restrictTo('system_admin', 'parking_manager'), ctrl.getAvailableStaff);
+
+/**
+ * @swagger
  * /parking-lots/{id}:
  *   get:
  *     summary: Get parking lot by ID
@@ -98,5 +115,74 @@ router.get('/:id', ctrl.getById);
 router.put('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.update);
 router.delete('/:id', restrictTo('system_admin'), ctrl.delete);
 router.get('/:id/slots-summary', ctrl.getSlotsSummary);
+
+/**
+ * @swagger
+ * /parking-lots/{id}/staff:
+ *   get:
+ *     summary: Get staff assigned to a parking lot
+ *     tags: [Parking Lots - Staff Assignment]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Parking lot ID
+ *     responses:
+ *       200:
+ *         description: List of assigned staff
+ *   post:
+ *     summary: Assign staff to a parking lot
+ *     tags: [Parking Lots - Staff Assignment]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [staffId]
+ *             properties:
+ *               staffId:
+ *                 type: string
+ *                 description: User ID of the staff member
+ *                 example: 60d5ec49f1b2c72b9c8e4d3a
+ *     responses:
+ *       200:
+ *         description: Staff assigned
+ *       409:
+ *         description: Staff already assigned
+ */
+router.get('/:id/staff', restrictTo('system_admin', 'parking_manager'), ctrl.getStaff);
+router.post('/:id/staff', restrictTo('system_admin', 'parking_manager'), ctrl.assignStaff);
+
+/**
+ * @swagger
+ * /parking-lots/{id}/staff/{staffId}:
+ *   delete:
+ *     summary: Remove staff from a parking lot
+ *     tags: [Parking Lots - Staff Assignment]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Parking lot ID
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema: { type: string }
+ *         description: Staff user ID
+ *     responses:
+ *       200:
+ *         description: Staff removed
+ *       404:
+ *         description: Staff not found in this lot
+ */
+router.delete('/:id/staff/:staffId', restrictTo('system_admin', 'parking_manager'), ctrl.removeStaff);
 
 module.exports = router;

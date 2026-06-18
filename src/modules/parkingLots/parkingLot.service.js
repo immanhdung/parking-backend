@@ -102,6 +102,150 @@ class ParkingLotService {
   }
 
   /**
+   * Get staff list assigned to a parking lot
+   */
+  async getStaff(parkingLotId, managerId) {
+    const lot = await ParkingLot.findById(parkingLotId);
+    if (!lot) throw ApiError.notFound('Parking lot not found.');
+
+    // Verify manager owns this lot
+    if (managerId && lot.manager?.toString() !== managerId.toString()) {
+      throw ApiError.forbidden('You are not the manager of this parking lot.');
+    }
+
+    const User = require('../users/user.model');
+    const staff = await User.find({
+      _id: { $in: lot.staff },
+      role: 'parking_staff',
+    })
+      .select('fullName email phone avatar status createdAt')
+      .sort({ fullName: 1 });
+
+    return staff;
+  }
+
+  /**
+   * Assign a staff member to a parking lot
+   */
+  async assignStaff(parkingLotId, staffId, managerId) {
+    const User = require('../users/user.model');
+
+    const lot = await ParkingLot.findById(parkingLotId);
+    if (!lot) throw ApiError.notFound('Parking lot not found.');
+
+    // Verify manager owns this lot
+    if (managerId && lot.manager?.toString() !== managerId.toString()) {
+      throw ApiError.forbidden('You are not the manager of this parking lot.');
+    }
+
+    // Validate staff user
+    const staffUser = await User.findById(staffId);
+    if (!staffUser) throw ApiError.notFound('Staff user not found.');
+    if (staffUser.role !== 'parking_staff') {
+      throw ApiError.badRequest('User is not a parking staff member.');
+    }
+
+    // Check if already assigned to another lot
+    if (
+      staffUser.assignedParkingLot &&
+      staffUser.assignedParkingLot.toString() !== parkingLotId
+    ) {
+      const otherLot = await ParkingLot.findById(staffUser.assignedParkingLot).select('name');
+      throw ApiError.conflict(
+        `Staff is already assigned to parking lot "${otherLot?.name || 'another lot'}". Remove them first.`
+      );
+    }
+
+    // Check if already in this lot's staff list
+    if (lot.staff.some(id => id.toString() === staffId)) {
+      throw ApiError.conflict('Staff is already assigned to this parking lot.');
+    }
+
+    // Add staff to parking lot
+    lot.staff.push(staffId);
+    await lot.save();
+
+    // Update user's assignedParkingLot
+    staffUser.assignedParkingLot = parkingLotId;
+    await staffUser.save({ validateBeforeSave: false });
+
+    return {
+      message: 'Staff assigned successfully.',
+      staff: {
+        _id: staffUser._id,
+        fullName: staffUser.fullName,
+        email: staffUser.email,
+        phone: staffUser.phone,
+      },
+    };
+  }
+
+  /**
+   * Remove a staff member from a parking lot
+   */
+  async removeStaff(parkingLotId, staffId, managerId) {
+    const User = require('../users/user.model');
+
+    const lot = await ParkingLot.findById(parkingLotId);
+    if (!lot) throw ApiError.notFound('Parking lot not found.');
+
+    // Verify manager owns this lot
+    if (managerId && lot.manager?.toString() !== managerId.toString()) {
+      throw ApiError.forbidden('You are not the manager of this parking lot.');
+    }
+
+    // Check if staff is in the lot's staff list
+    const staffIndex = lot.staff.findIndex(id => id.toString() === staffId);
+    if (staffIndex === -1) {
+      throw ApiError.notFound('Staff is not assigned to this parking lot.');
+    }
+
+    // Remove from lot
+    lot.staff.splice(staffIndex, 1);
+    await lot.save();
+
+    // Clear user's assignedParkingLot
+    await User.findByIdAndUpdate(staffId, { assignedParkingLot: null });
+
+    return { message: 'Staff removed from parking lot.' };
+  }
+
+  /**
+   * Get available staff (not assigned to any parking lot)
+   */
+  async getAvailableStaff(query) {
+    const User = require('../users/user.model');
+    const { search } = query || {};
+
+    const filter = {
+      role: 'parking_staff',
+      $or: [
+        { assignedParkingLot: null },
+        { assignedParkingLot: { $exists: false } },
+      ],
+      status: 'active',
+    };
+
+    if (search) {
+      filter.$and = [
+        {
+          $or: [
+            { fullName: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { phone: { $regex: search, $options: 'i' } },
+          ],
+        },
+      ];
+    }
+
+    const staff = await User.find(filter)
+      .select('fullName email phone avatar status createdAt')
+      .sort({ fullName: 1 });
+
+    return staff;
+  }
+
+  /**
    * Update slot counts on the parking lot (called when slot status changes)
    */
   async syncSlotCounts(parkingLotId) {

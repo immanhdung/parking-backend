@@ -32,6 +32,42 @@ class ParkingLotController {
     const summary = await parkingLotService.getSlotsSummary(req.params.id);
     ApiResponse.success(res, 'Slots summary retrieved.', summary);
   });
+
+  /**
+   * GET /parking-lots/:id/staff - Get staff assigned to a parking lot
+   */
+  getStaff = asyncHandler(async (req, res) => {
+    const managerId = req.user.role === 'system_admin' ? null : req.user._id;
+    const staff = await parkingLotService.getStaff(req.params.id, managerId);
+    ApiResponse.success(res, 'Staff list retrieved.', staff);
+  });
+
+  /**
+   * POST /parking-lots/:id/staff - Assign staff to a parking lot
+   */
+  assignStaff = asyncHandler(async (req, res) => {
+    const managerId = req.user.role === 'system_admin' ? null : req.user._id;
+    const result = await parkingLotService.assignStaff(req.params.id, req.body.staffId, managerId);
+    ApiResponse.success(res, result.message, result.staff);
+  });
+
+  /**
+   * DELETE /parking-lots/:id/staff/:staffId - Remove staff from a parking lot
+   */
+  removeStaff = asyncHandler(async (req, res) => {
+    const managerId = req.user.role === 'system_admin' ? null : req.user._id;
+    const result = await parkingLotService.removeStaff(req.params.id, req.params.staffId, managerId);
+    ApiResponse.success(res, result.message);
+  });
+
+  /**
+   * GET /parking-lots/available-staff - Get unassigned staff
+   */
+  getAvailableStaff = asyncHandler(async (req, res) => {
+    const staff = await parkingLotService.getAvailableStaff(req.query);
+    ApiResponse.success(res, 'Available staff retrieved.', staff);
+  });
 }
 
 module.exports = new ParkingLotController();
+
