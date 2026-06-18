@@ -50,9 +50,16 @@ router.use(protect);
  *                     type: string
  *                   city:
  *                     type: string
+ *               manager:
+ *                 type: string
+ *                 description: ObjectId of a user with role parking_manager
  *     responses:
  *       201:
  *         description: Parking lot created
+ *       400:
+ *         description: Invalid manager role
+ *       409:
+ *         description: Code already exists
  */
 router.get('/', ctrl.getAll);
 router.post('/', restrictTo('system_admin'), ctrl.create);

@@ -87,7 +87,7 @@ const limiter = rateLimit({
   message: { success: false, message: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === '/api/v1/health',
+  skip: (req) => req.path === '/api/v1/health' || process.env.NODE_ENV === 'development',
 });
 
 // More strict rate limit for auth routes

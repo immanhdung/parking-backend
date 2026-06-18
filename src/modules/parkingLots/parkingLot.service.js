@@ -6,7 +6,7 @@ const Pagination = require('../../utils/pagination');
 
 class ParkingLotService {
   async getAll(query) {
-    const { page = 1, limit = 10, sort = '-createdAt', search, status, city } = query;
+    const { page = 1, limit = 10, sort = '-createdAt', search, status, city, manager } = query;
 
     const filter = {};
     if (search) {
@@ -18,6 +18,7 @@ class ParkingLotService {
     }
     if (status) filter.status = status;
     if (city) filter['address.city'] = { $regex: city, $options: 'i' };
+    if (manager) filter.manager = manager;
 
     return Pagination.paginate(ParkingLot, filter, {
       page: parseInt(page),
@@ -35,15 +36,30 @@ class ParkingLotService {
     return lot;
   }
 
-  async create(data, managerId) {
+  async create(data) {
     const existing = await ParkingLot.findOne({ code: data.code.toUpperCase() });
     if (existing) throw ApiError.conflict(`Parking lot code '${data.code}' already exists.`);
+
+    if (data.manager) {
+      const User = require('../users/user.model');
+      const managerUser = await User.findById(data.manager);
+      if (!managerUser) throw ApiError.notFound('Manager user not found.');
+      if (managerUser.role !== 'parking_manager' && managerUser.role !== 'system_admin') {
+        throw ApiError.badRequest('Assigned user must be a parking manager.');
+      }
+    }
 
     const lot = await ParkingLot.create({
       ...data,
       code: data.code.toUpperCase(),
-      manager: managerId,
+      manager: data.manager || null,
     });
+
+    if (data.manager) {
+      const User = require('../users/user.model');
+      await User.findByIdAndUpdate(data.manager, { assignedParkingLot: lot._id });
+    }
+
     return lot;
   }
 
@@ -54,13 +70,39 @@ class ParkingLotService {
       data.code = data.code.toUpperCase();
     }
 
-    const lot = await ParkingLot.findByIdAndUpdate(id, data, {
+    const lot = await ParkingLot.findById(id);
+    if (!lot) throw ApiError.notFound('Parking lot not found.');
+    
+    const oldManager = lot.manager;
+
+    if (data.manager && data.manager !== oldManager?.toString()) {
+      const User = require('../users/user.model');
+      const managerUser = await User.findById(data.manager);
+      if (!managerUser) throw ApiError.notFound('Manager user not found.');
+      if (managerUser.role !== 'parking_manager' && managerUser.role !== 'system_admin') {
+        throw ApiError.badRequest('Assigned user must be a parking manager.');
+      }
+    }
+
+    const updatedLot = await ParkingLot.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,
-    }).populate('manager', 'fullName email');
+    }).populate('manager', 'fullName email phone');
 
-    if (!lot) throw ApiError.notFound('Parking lot not found.');
-    return lot;
+    // Handle manager change bidirectional sync
+    if (data.manager !== undefined && data.manager !== oldManager?.toString()) {
+      const User = require('../users/user.model');
+      // Clear old manager's assigned lot
+      if (oldManager) {
+        await User.findByIdAndUpdate(oldManager, { assignedParkingLot: null });
+      }
+      // Set new manager's assigned lot
+      if (data.manager) {
+        await User.findByIdAndUpdate(data.manager, { assignedParkingLot: id });
+      }
+    }
+
+    return updatedLot;
   }
 
   async delete(id) {

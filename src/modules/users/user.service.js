@@ -68,7 +68,9 @@ class UserService {
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
       runValidators: true,
-    }).select('-refreshTokens');
+    })
+      .select('-refreshTokens')
+      .populate('assignedParkingLot', 'name code address');
 
     if (!user) throw ApiError.notFound('User not found.');
     return user;

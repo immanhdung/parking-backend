@@ -14,11 +14,14 @@ class ParkingLotController {
   });
 
   create = asyncHandler(async (req, res) => {
-    const lot = await parkingLotService.create(req.body, req.user._id);
+    const lot = await parkingLotService.create(req.body);
     ApiResponse.created(res, 'Parking lot created.', lot);
   });
 
   update = asyncHandler(async (req, res) => {
+    if (req.user.role !== 'system_admin' && req.body.manager !== undefined) {
+      delete req.body.manager;
+    }
     const lot = await parkingLotService.update(req.params.id, req.body);
     ApiResponse.success(res, 'Parking lot updated.', lot);
   });
