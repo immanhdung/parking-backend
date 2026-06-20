@@ -146,14 +146,9 @@ class ParkingLotService {
   /**
    * Get staff list assigned to a parking lot
    */
-  async getStaff(parkingLotId, managerId) {
+  async getStaff(parkingLotId) {
     const lot = await ParkingLot.findById(parkingLotId);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
-
-    // Verify manager owns this lot
-    if (managerId && lot.manager?.toString() !== managerId.toString()) {
-      throw ApiError.forbidden('You are not the manager of this parking lot.');
-    }
 
     const User = require('../users/user.model');
     const staff = await User.find({
@@ -169,16 +164,11 @@ class ParkingLotService {
   /**
    * Assign a staff member to a parking lot
    */
-  async assignStaff(parkingLotId, staffId, managerId) {
+  async assignStaff(parkingLotId, staffId) {
     const User = require('../users/user.model');
 
     const lot = await ParkingLot.findById(parkingLotId);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
-
-    // Verify manager owns this lot
-    if (managerId && lot.manager?.toString() !== managerId.toString()) {
-      throw ApiError.forbidden('You are not the manager of this parking lot.');
-    }
 
     // Validate staff user
     const staffUser = await User.findById(staffId);
@@ -225,16 +215,11 @@ class ParkingLotService {
   /**
    * Remove a staff member from a parking lot
    */
-  async removeStaff(parkingLotId, staffId, managerId) {
+  async removeStaff(parkingLotId, staffId) {
     const User = require('../users/user.model');
 
     const lot = await ParkingLot.findById(parkingLotId);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
-
-    // Verify manager owns this lot
-    if (managerId && lot.manager?.toString() !== managerId.toString()) {
-      throw ApiError.forbidden('You are not the manager of this parking lot.');
-    }
 
     // Check if staff is in the lot's staff list
     const staffIndex = lot.staff.findIndex(id => id.toString() === staffId);
