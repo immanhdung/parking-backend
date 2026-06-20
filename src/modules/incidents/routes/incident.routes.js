@@ -68,7 +68,7 @@ class IncidentService {
       }
     };
     if (file) {
-      updateQuery.$push = { images: { url: file.path, publicId: file.filename } };
+      updateQuery.$push = { images: { url: `/uploads/evidence/${file.filename}`, publicId: file.filename } };
     }
     const incident = await Incident.findByIdAndUpdate(id, updateQuery, { new: true });
     if (!incident) throw ApiError.notFound('Incident not found.');

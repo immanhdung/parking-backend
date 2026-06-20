@@ -111,7 +111,7 @@ class ParkingSessionService {
 
       // Verify license plate matches
       if (licensePlate && booking.vehicleInfo?.licensePlate &&
-          booking.vehicleInfo.licensePlate !== licensePlate.toUpperCase()) {
+        booking.vehicleInfo.licensePlate !== licensePlate.toUpperCase()) {
         throw ApiError.badRequest('License plate does not match booking.');
       }
     } else {
@@ -256,7 +256,7 @@ class ParkingSessionService {
     }
 
     const totalFee = fee + overtimeFee;
-    
+
     // Deduct advance payment
     const feeToPay = Math.max(0, totalFee - session.advancePayment);
 
@@ -336,6 +336,7 @@ class ParkingSessionService {
     if (parkingLotId) filter.parkingLot = parkingLotId;
 
     const session = await ParkingSession.findOne(filter)
+      .sort({ entryTime: -1 })
       .populate('user', 'fullName email phone')
       .populate('slot', 'slotCode')
       .populate('floor', 'name floorNumber')
@@ -374,8 +375,12 @@ class ParkingSessionService {
     const session = await ParkingSession.findById(sessionId);
     if (!session) throw ApiError.notFound('Session not found.');
 
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return session;
+    }
+
     const images = files.map(f => ({
-      url: f.path,
+      url: `/uploads/evidence/${f.filename}`,
       publicId: f.filename,
       type,
       capturedAt: new Date(),

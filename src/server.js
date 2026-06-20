@@ -12,6 +12,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const cookieParser = require('cookie-parser');
@@ -37,6 +38,8 @@ const httpServer = http.createServer(app);
 app.use(helmet({
   contentSecurityPolicy: false, // Disabled to allow Swagger UI to work properly
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin loading of resources
+  crossOriginOpenerPolicy: false,
 }));
 
 // CORS
@@ -111,6 +114,11 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(mongoSanitize()); // Prevent NoSQL injection
+// Serve local evidence images with cross-origin policy so frontend can display them
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../public/uploads')));
 
 // HTTP request logging
 if (process.env.NODE_ENV !== 'test') {
