@@ -70,7 +70,7 @@ zoneRouter.get('/', asyncHandler(async (req, res) => {
   ApiResponse.paginated(res, 'Zones retrieved.', docs, pagination);
 }));
 
-zoneRouter.post('/', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+zoneRouter.post('/', restrictTo('parking_manager'), asyncHandler(async (req, res) => {
   const zone = await Zone.create({ ...req.body, code: req.body.code?.toUpperCase() });
   ApiResponse.created(res, 'Zone created.', zone);
 }));
@@ -84,13 +84,13 @@ zoneRouter.get('/:id', asyncHandler(async (req, res) => {
   ApiResponse.success(res, 'Zone retrieved.', zone);
 }));
 
-zoneRouter.put('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+zoneRouter.put('/:id', restrictTo('parking_manager'), asyncHandler(async (req, res) => {
   const zone = await Zone.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!zone) throw ApiError.notFound('Zone not found.');
   ApiResponse.success(res, 'Zone updated.', zone);
 }));
 
-zoneRouter.delete('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+zoneRouter.delete('/:id', restrictTo('parking_manager'), asyncHandler(async (req, res) => {
   const zone = await Zone.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
   if (!zone) throw ApiError.notFound('Zone not found.');
   ApiResponse.success(res, 'Zone deleted.');
@@ -153,7 +153,7 @@ vehicleTypeRouter.get('/', asyncHandler(async (req, res) => {
   ApiResponse.success(res, 'Vehicle types retrieved.', types);
 }));
 
-vehicleTypeRouter.post('/', restrictTo('system_admin'), asyncHandler(async (req, res) => {
+vehicleTypeRouter.post('/', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   const existing = await VehicleType.findOne({ code: req.body.code?.toUpperCase() });
   if (existing) throw ApiError.conflict('Vehicle type code already exists.');
   const vt = await VehicleType.create({ ...req.body, code: req.body.code?.toUpperCase() });
@@ -166,13 +166,13 @@ vehicleTypeRouter.get('/:id', asyncHandler(async (req, res) => {
   ApiResponse.success(res, 'Vehicle type retrieved.', vt);
 }));
 
-vehicleTypeRouter.put('/:id', restrictTo('system_admin'), asyncHandler(async (req, res) => {
+vehicleTypeRouter.put('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   const vt = await VehicleType.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!vt) throw ApiError.notFound('Vehicle type not found.');
   ApiResponse.success(res, 'Vehicle type updated.', vt);
 }));
 
-vehicleTypeRouter.delete('/:id', restrictTo('system_admin'), asyncHandler(async (req, res) => {
+vehicleTypeRouter.delete('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   const vt = await VehicleType.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
   if (!vt) throw ApiError.notFound('Vehicle type not found.');
   ApiResponse.success(res, 'Vehicle type deleted.');
