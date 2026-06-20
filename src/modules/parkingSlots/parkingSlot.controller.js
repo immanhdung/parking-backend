@@ -72,6 +72,16 @@ class ParkingSlotController {
     const data = await parkingSlotService.getOccupancyByVehicleType(req.params.parkingLotId);
     ApiResponse.success(res, 'Occupancy data retrieved.', data);
   });
+
+  lockSlot = asyncHandler(async (req, res) => {
+    const result = await parkingSlotService.lockSlot(req.params.id, req.user._id);
+    ApiResponse.success(res, 'Slot locked successfully.', result);
+  });
+
+  unlockSlot = asyncHandler(async (req, res) => {
+    const result = await parkingSlotService.unlockSlot(req.params.id, req.user._id);
+    ApiResponse.success(res, 'Slot unlocked.', result);
+  });
 }
 
 module.exports = new ParkingSlotController();

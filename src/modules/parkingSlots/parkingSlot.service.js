@@ -4,6 +4,9 @@ const Zone = require('../zones/zone.model');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { suggestOptimalSlot } = require('../../utils/helpers');
+const { emitSlotUpdate } = require('../../sockets/socket.server');
+
+const LOCK_DURATION_MS = 3 * 60 * 1000; // 3 minutes
 
 class ParkingSlotService {
   async getSlots(query) {
@@ -222,6 +225,110 @@ class ParkingSlotService {
       availableSlots: counts.available || 0,
       occupiedSlots: counts.occupied || 0,
     });
+  }
+
+  /**
+   * Temporarily lock a slot so other users can't select it (3 min TTL)
+   */
+  async lockSlot(slotId, userId) {
+    const slot = await ParkingSlot.findById(slotId);
+    if (!slot) throw ApiError.notFound('Parking slot not found.');
+
+    const now = new Date();
+
+    // If already locked by someone else and lock hasn't expired
+    if (
+      slot.lockedBy &&
+      slot.lockedBy.toString() !== userId.toString() &&
+      slot.lockedUntil && slot.lockedUntil > now
+    ) {
+      const secsLeft = Math.ceil((slot.lockedUntil - now) / 1000);
+      throw ApiError.conflict(`Slot is being selected by another user. Please try again in ${secsLeft}s.`);
+    }
+
+    // If slot is already reserved or occupied
+    if (slot.status === 'occupied' || slot.status === 'reserved') {
+      throw ApiError.badRequest(`Slot is ${slot.status} and cannot be selected.`);
+    }
+
+    const lockedUntil = new Date(now.getTime() + LOCK_DURATION_MS);
+    slot.lockedBy = userId;
+    slot.lockedUntil = lockedUntil;
+    await slot.save();
+
+    // Emit real-time lock event
+    try {
+      emitSlotUpdate(slot.parkingLot.toString(), {
+        slotId: slot._id,
+        slotCode: slot.slotCode,
+        status: slot.status, // still 'available' but now locked
+        locked: true,
+        lockedBy: userId,
+        lockedUntil: lockedUntil.toISOString(),
+        floorId: slot.floor,
+        zoneId: slot.zone,
+      });
+    } catch (_) { /* socket may not be ready */ }
+
+    return { slotId: slot._id, slotCode: slot.slotCode, lockedUntil };
+  }
+
+  /**
+   * Release a slot lock (user deselects or leaves the page)
+   */
+  async unlockSlot(slotId, userId) {
+    const slot = await ParkingSlot.findById(slotId);
+    if (!slot) throw ApiError.notFound('Parking slot not found.');
+
+    // Only the lock owner can release it
+    if (slot.lockedBy && slot.lockedBy.toString() !== userId.toString()) {
+      throw ApiError.forbidden('You did not lock this slot.');
+    }
+
+    slot.lockedBy = null;
+    slot.lockedUntil = null;
+    await slot.save();
+
+    // Emit real-time unlock event
+    try {
+      emitSlotUpdate(slot.parkingLot.toString(), {
+        slotId: slot._id,
+        slotCode: slot.slotCode,
+        status: slot.status,
+        locked: false,
+        floorId: slot.floor,
+        zoneId: slot.zone,
+      });
+    } catch (_) { /* socket may not be ready */ }
+
+    return { slotId: slot._id, slotCode: slot.slotCode };
+  }
+
+  /**
+   * Auto-clean expired locks (can be called periodically)
+   */
+  async cleanExpiredLocks() {
+    const now = new Date();
+    const expired = await ParkingSlot.find({
+      lockedBy: { $ne: null },
+      lockedUntil: { $lt: now },
+    });
+    for (const slot of expired) {
+      try {
+        emitSlotUpdate(slot.parkingLot.toString(), {
+          slotId: slot._id,
+          slotCode: slot.slotCode,
+          status: slot.status,
+          locked: false,
+          floorId: slot.floor,
+          zoneId: slot.zone,
+        });
+      } catch (_) {}
+      slot.lockedBy = null;
+      slot.lockedUntil = null;
+      await slot.save();
+    }
+    return expired.length;
   }
 
   async getOccupancyByVehicleType(parkingLotId) {

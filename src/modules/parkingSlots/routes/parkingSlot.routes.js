@@ -178,4 +178,36 @@ router.delete('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.delete
  */
 router.patch('/:id/status', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.updateStatus);
 
+/**
+ * @swagger
+ * /parking-slots/{id}/lock:
+ *   post:
+ *     summary: Temporarily lock a slot for 3 minutes while user is selecting
+ *     tags: [Parking Slots]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Slot locked with lockedUntil timestamp
+ *       409:
+ *         description: Slot already locked by another user
+ * /parking-slots/{id}/unlock:
+ *   delete:
+ *     summary: Release a slot lock
+ *     tags: [Parking Slots]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Slot unlocked
+ */
+router.post('/:id/lock', ctrl.lockSlot);
+router.delete('/:id/lock', ctrl.unlockSlot);
+
 module.exports = router;

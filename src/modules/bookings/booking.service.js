@@ -7,6 +7,7 @@ const notificationService = require('../notifications/notification.service');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { generateQRCode, suggestOptimalSlot } = require('../../utils/helpers');
+const { emitSlotUpdate } = require('../../sockets/socket.server');
 
 class BookingService {
   async getBookings(query, user) {
@@ -174,6 +175,17 @@ class BookingService {
         status: 'reserved',
         currentBooking: booking._id,
       });
+      // Emit real-time update
+      try {
+        emitSlotUpdate(parkingLot.toString(), {
+          slotId: recommendedSlot._id,
+          slotCode: recommendedSlot.slotCode,
+          status: 'reserved',
+          bookingId: booking._id,
+          floorId: recommendedSlot.floor?._id || recommendedSlot.floor,
+          zoneId: recommendedSlot.zone?._id || recommendedSlot.zone,
+        });
+      } catch (_) { /* socket may not be ready */ }
     }
 
     // Generate QR code
@@ -241,10 +253,21 @@ class BookingService {
 
     // Release the reserved slot
     if (booking.assignedSlot) {
-      await ParkingSlot.findByIdAndUpdate(booking.assignedSlot, {
-        status: 'available',
-        currentBooking: null,
-      });
+      const releasedSlot = await ParkingSlot.findByIdAndUpdate(
+        booking.assignedSlot,
+        { status: 'available', currentBooking: null },
+        { new: true }
+      );
+      // Emit real-time update
+      try {
+        emitSlotUpdate(booking.parkingLot.toString(), {
+          slotId: booking.assignedSlot,
+          slotCode: releasedSlot?.slotCode,
+          status: 'available',
+          floorId: booking.floor,
+          zoneId: booking.zone,
+        });
+      } catch (_) { /* socket may not be ready */ }
     }
 
     booking.status = 'cancelled';

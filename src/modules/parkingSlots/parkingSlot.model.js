@@ -44,6 +44,16 @@ const parkingSlotSchema = new mongoose.Schema(
       ref: 'Booking',
       default: null,
     },
+    // Temporary lock: user is previewing the slot (3-min TTL)
+    lockedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    lockedUntil: {
+      type: Date,
+      default: null,
+    },
     // Physical position (row, column)
     position: {
       row: String,
