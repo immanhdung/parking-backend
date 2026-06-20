@@ -16,7 +16,11 @@ class ParkingSessionService {
 
     const filter = {};
     if (status) filter.status = status;
-    if (licensePlate) filter['vehicleInfo.licensePlate'] = { $regex: licensePlate, $options: 'i' };
+    if (licensePlate) {
+      const cleanPlate = licensePlate.replace(/[^a-zA-Z0-9]/g, '');
+      const regexStr = cleanPlate.split('').join('[^a-zA-Z0-9]*');
+      filter['vehicleInfo.licensePlate'] = { $regex: new RegExp(`^[^a-zA-Z0-9]*${regexStr}[^a-zA-Z0-9]*$`, 'i') };
+    }
 
     // Manager/Staff: only their lot
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
@@ -321,7 +325,13 @@ class ParkingSessionService {
     const { licensePlate, sessionCode, parkingLotId } = query;
 
     const filter = { status: 'active' };
-    if (licensePlate) filter['vehicleInfo.licensePlate'] = licensePlate.toUpperCase();
+    if (licensePlate) {
+      // Clean input: remove spaces, dashes, dots
+      const cleanPlate = licensePlate.replace(/[^a-zA-Z0-9]/g, '');
+      // Create a regex that allows optional special characters between each alphanumeric char
+      const regexStr = cleanPlate.split('').join('[^a-zA-Z0-9]*');
+      filter['vehicleInfo.licensePlate'] = { $regex: new RegExp(`^[^a-zA-Z0-9]*${regexStr}[^a-zA-Z0-9]*$`, 'i') };
+    }
     if (sessionCode) filter.sessionCode = sessionCode.toUpperCase();
     if (parkingLotId) filter.parkingLot = parkingLotId;
 
