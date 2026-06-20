@@ -183,12 +183,12 @@ router.put('/:id', restrictTo('system_admin', 'parking_manager', 'parking_staff'
  *       200:
  *         description: Incident resolved
  */
-router.patch('/:id/resolve', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+router.patch('/:id/resolve', restrictTo('system_admin', 'parking_manager', 'parking_staff'), asyncHandler(async (req, res) => {
   const incident = await incidentService.resolve(req.params.id, req.body, req.user._id);
   ApiResponse.success(res, 'Incident resolved.', incident);
 }));
 
-router.patch('/:id/assign', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+router.patch('/:id/assign', restrictTo('system_admin', 'parking_manager', 'parking_staff'), asyncHandler(async (req, res) => {
   const incident = await incidentService.assign(req.params.id, req.body.assigneeId);
   ApiResponse.success(res, 'Incident assigned.', incident);
 }));
