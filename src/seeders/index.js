@@ -328,17 +328,13 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       zones.push(
         { floor: floor._id, parkingLot: lot._id, name: 'Khu A (Electric Car)', code: `F1A`, status: 'active', allowedVehicleTypes: [eCarType._id] },
         { floor: floor._id, parkingLot: lot._id, name: 'Khu B (Bicycle)', code: `F1B`, status: 'active', allowedVehicleTypes: [bikeType._id] },
-        { floor: floor._id, parkingLot: lot._id, name: 'Khu C (Electric Car)', code: `F1C`, status: 'active', allowedVehicleTypes: [eCarType._id] },
-        { floor: floor._id, parkingLot: lot._id, name: 'Khu D (Bicycle)', code: `F1D`, status: 'active', allowedVehicleTypes: [bikeType._id] },
       );
-    } 
+    }
     // For others, just create Zone A and Zone B for the same vehicle type
     else {
       zones.push(
         { floor: floor._id, parkingLot: lot._id, name: 'Khu A', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}A`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
         { floor: floor._id, parkingLot: lot._id, name: 'Khu B', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}B`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
-        { floor: floor._id, parkingLot: lot._id, name: 'Khu C', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}C`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
-        { floor: floor._id, parkingLot: lot._id, name: 'Khu D', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}D`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
       );
     }
   }
@@ -363,10 +359,10 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
   // Floor B1: CAR
   const b1Floor = floors.find(f => f.floorNumber === -1);
   const b1Zones = zones.filter(z => z.floor.toString() === b1Floor._id.toString());
-  
+
   for (const zone of b1Zones) {
-    const rowCode = zone.code.slice(-1); // A, B, C, D
-    for (let i = 1; i <= 15; i++) { // 15 * 4 = 60 slots
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 30; i++) {
       slots.push({
         slotCode: `B1${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
@@ -379,53 +375,42 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
     }
   }
 
-  // Floor 1: Electric Car (Zone A, C) & Bicycle (Zone B, D)
+  // Floor 1: Electric Car (Zone A) & Bicycle (Zone B)
   const f1Floor = floors.find(f => f.floorNumber === 1);
   const f1Zones = zones.filter(z => z.floor.toString() === f1Floor._id.toString());
   const f1ZoneA = f1Zones.find(z => z.code.includes('A'));
   const f1ZoneB = f1Zones.find(z => z.code.includes('B'));
-  const f1ZoneC = f1Zones.find(z => z.code.includes('C'));
-  const f1ZoneD = f1Zones.find(z => z.code.includes('D'));
 
-  // Zone A, C for Electric Car: 8 slots each = 16 slots
-  for (const z of [f1ZoneA, f1ZoneC]) {
-    const rowCode = z.code.slice(-1);
-    for (let i = 1; i <= 8; i++) {
-      slots.push({
-        slotCode: `F1${rowCode}-${String(i).padStart(3, '0')}`,
-        parkingLot: lot._id,
-        floor: f1Floor._id,
-        zone: z._id,
-        vehicleType: eCarType._id,
-        status: 'available',
-        position: { row: rowCode, column: i },
-        features: { hasEVCharger: true },
-      });
-    }
+  for (let i = 1; i <= 15; i++) {
+    slots.push({
+      slotCode: `F1A-${String(i).padStart(3, '0')}`,
+      parkingLot: lot._id,
+      floor: f1Floor._id,
+      zone: f1ZoneA._id,
+      vehicleType: eCarType._id,
+      status: 'available',
+      position: { row: 'A', column: i },
+      features: { hasEVCharger: true }, // all electric cars have EV charger
+    });
   }
-  
-  // Zone B, D for Bicycle: 10 slots each = 20 slots
-  for (const z of [f1ZoneB, f1ZoneD]) {
-    const rowCode = z.code.slice(-1);
-    for (let i = 1; i <= 10; i++) {
-      slots.push({
-        slotCode: `F1${rowCode}-${String(i).padStart(3, '0')}`,
-        parkingLot: lot._id,
-        floor: f1Floor._id,
-        zone: z._id,
-        vehicleType: bikeType._id,
-        status: 'available',
-        position: { row: rowCode, column: i },
-      });
-    }
+  for (let i = 1; i <= 20; i++) {
+    slots.push({
+      slotCode: `F1B-${String(i).padStart(3, '0')}`,
+      parkingLot: lot._id,
+      floor: f1Floor._id,
+      zone: f1ZoneB._id,
+      vehicleType: bikeType._id,
+      status: 'available',
+      position: { row: 'B', column: i },
+    });
   }
 
   // Floor 2: Motorbike
   const f2Floor = floors.find(f => f.floorNumber === 2);
   const f2Zones = zones.filter(z => z.floor.toString() === f2Floor._id.toString());
   for (const zone of f2Zones) {
-    const rowCode = zone.code.slice(-1); // A, B, C, D
-    for (let i = 1; i <= 20; i++) { // 20 * 4 = 80 slots
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 40; i++) {
       slots.push({
         slotCode: `F2${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
@@ -442,8 +427,8 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
   const f3Floor = floors.find(f => f.floorNumber === 3);
   const f3Zones = zones.filter(z => z.floor.toString() === f3Floor._id.toString());
   for (const zone of f3Zones) {
-    const rowCode = zone.code.slice(-1); // A, B, C, D
-    for (let i = 1; i <= 20; i++) { // 20 * 4 = 80 slots
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 40; i++) {
       slots.push({
         slotCode: `F3${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
