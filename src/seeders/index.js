@@ -43,6 +43,14 @@ const seedVehicleTypes = async () => {
       isActive: true,
     },
     {
+      name: 'Xe ô tô điện',
+      code: 'ELECTRIC_CAR',
+      description: 'Xe ô tô điện, xe điện cỡ lớn',
+      size: 'large',
+      pricing: { hourlyRate: 6000, dailyRate: 90000, monthlyRate: 1700000 },
+      isActive: true,
+    },
+    {
       name: 'Xe máy',
       code: 'MOTORBIKE',
       description: 'Xe máy, xe mô tô',
@@ -53,15 +61,15 @@ const seedVehicleTypes = async () => {
     {
       name: 'Xe đạp',
       code: 'BICYCLE',
-      description: 'Xe đạp thường và xe đạp điện nhẹ',
+      description: 'Xe đạp thường',
       size: 'small',
       pricing: { hourlyRate: 1000, dailyRate: 10000, monthlyRate: 150000 },
       isActive: true,
     },
     {
-      name: 'Xe đạp điện',
+      name: 'Xe đạp điện / Máy điện',
       code: 'ELECTRIC_BIKE',
-      description: 'Xe đạp điện và xe điện nhỏ',
+      description: 'Xe máy điện và xe đạp điện',
       size: 'small',
       pricing: { hourlyRate: 2000, dailyRate: 25000, monthlyRate: 500000 },
       isActive: true,
@@ -194,6 +202,7 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
   console.log('🏗️  Seeding floors and zones...');
 
   const carType = vehicleTypes.find(v => v.code === 'CAR');
+  const eCarType = vehicleTypes.find(v => v.code === 'ELECTRIC_CAR');
   const motoType = vehicleTypes.find(v => v.code === 'MOTORBIKE');
   const bikeType = vehicleTypes.find(v => v.code === 'BICYCLE');
   const eBikeType = vehicleTypes.find(v => v.code === 'ELECTRIC_BIKE');
@@ -204,7 +213,7 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       floorNumber: -1,
       name: 'Tầng Hầm B1',
       floorType: 'basement',
-      allowedVehicleTypes: [motoType._id, bikeType._id, eBikeType._id],
+      allowedVehicleTypes: [carType._id],
       status: 'active',
     },
     {
@@ -212,7 +221,7 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       floorNumber: 1,
       name: 'Tầng 1 (Trệt)',
       floorType: 'ground',
-      allowedVehicleTypes: [carType._id, motoType._id],
+      allowedVehicleTypes: [eCarType._id, bikeType._id],
       status: 'active',
     },
     {
@@ -220,7 +229,7 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       floorNumber: 2,
       name: 'Tầng 2',
       floorType: 'above_ground',
-      allowedVehicleTypes: [carType._id],
+      allowedVehicleTypes: [motoType._id],
       status: 'active',
     },
     {
@@ -228,7 +237,7 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       floorNumber: 3,
       name: 'Tầng 3',
       floorType: 'above_ground',
-      allowedVehicleTypes: [carType._id],
+      allowedVehicleTypes: [eBikeType._id],
       status: 'active',
     },
   ];
@@ -239,10 +248,20 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
   // Create zones for each floor
   const zones = [];
   for (const floor of createdFloors) {
-    zones.push(
-      { floor: floor._id, parkingLot: lot._id, name: 'Khu A', code: `F${floor.floorNumber}A`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
-      { floor: floor._id, parkingLot: lot._id, name: 'Khu B', code: `F${floor.floorNumber}B`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
-    );
+    // For Ground Floor (1), we have eCar and Bike, so separate zones
+    if (floor.floorNumber === 1) {
+      zones.push(
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu A (Electric Car)', code: `F1A`, status: 'active', allowedVehicleTypes: [eCarType._id] },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu B (Bicycle)', code: `F1B`, status: 'active', allowedVehicleTypes: [bikeType._id] },
+      );
+    } 
+    // For others, just create Zone A and Zone B for the same vehicle type
+    else {
+      zones.push(
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu A', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}A`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu B', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}B`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
+      );
+    }
   }
 
   const createdZones = await Zone.insertMany(zones);
@@ -255,97 +274,95 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
   console.log('🅿️  Seeding parking slots...');
 
   const carType = vehicleTypes.find(v => v.code === 'CAR');
+  const eCarType = vehicleTypes.find(v => v.code === 'ELECTRIC_CAR');
   const motoType = vehicleTypes.find(v => v.code === 'MOTORBIKE');
   const bikeType = vehicleTypes.find(v => v.code === 'BICYCLE');
+  const eBikeType = vehicleTypes.find(v => v.code === 'ELECTRIC_BIKE');
 
   const slots = [];
 
-  // Floor B1: Motorbike & Bicycle slots
+  // Floor B1: CAR
   const b1Floor = floors.find(f => f.floorNumber === -1);
   const b1Zones = zones.filter(z => z.floor.toString() === b1Floor._id.toString());
-  const b1ZoneA = b1Zones.find(z => z.code.includes('A'));
-  const b1ZoneB = b1Zones.find(z => z.code.includes('B'));
+  
+  for (const zone of b1Zones) {
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 30; i++) {
+      slots.push({
+        slotCode: `B1${rowCode}-${String(i).padStart(3, '0')}`,
+        parkingLot: lot._id,
+        floor: b1Floor._id,
+        zone: zone._id,
+        vehicleType: carType._id,
+        status: 'available',
+        position: { row: rowCode, column: i },
+      });
+    }
+  }
 
-  for (let i = 1; i <= 30; i++) {
+  // Floor 1: Electric Car (Zone A) & Bicycle (Zone B)
+  const f1Floor = floors.find(f => f.floorNumber === 1);
+  const f1Zones = zones.filter(z => z.floor.toString() === f1Floor._id.toString());
+  const f1ZoneA = f1Zones.find(z => z.code.includes('A'));
+  const f1ZoneB = f1Zones.find(z => z.code.includes('B'));
+
+  for (let i = 1; i <= 15; i++) {
     slots.push({
-      slotCode: `B1A-${String(i).padStart(3, '0')}`,
+      slotCode: `F1A-${String(i).padStart(3, '0')}`,
       parkingLot: lot._id,
-      floor: b1Floor._id,
-      zone: b1ZoneA._id,
-      vehicleType: motoType._id,
+      floor: f1Floor._id,
+      zone: f1ZoneA._id,
+      vehicleType: eCarType._id,
       status: 'available',
       position: { row: 'A', column: i },
+      features: { hasEVCharger: true }, // all electric cars have EV charger
     });
   }
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 20; i++) {
     slots.push({
-      slotCode: `B1B-${String(i).padStart(3, '0')}`,
+      slotCode: `F1B-${String(i).padStart(3, '0')}`,
       parkingLot: lot._id,
-      floor: b1Floor._id,
-      zone: b1ZoneB._id,
+      floor: f1Floor._id,
+      zone: f1ZoneB._id,
       vehicleType: bikeType._id,
       status: 'available',
       position: { row: 'B', column: i },
     });
   }
 
-  // Floor 1: Car + Motorbike
-  const f1Floor = floors.find(f => f.floorNumber === 1);
-  const f1Zones = zones.filter(z => z.floor.toString() === f1Floor._id.toString());
-  const f1ZoneA = f1Zones.find(z => z.code.includes('A'));
-  const f1ZoneB = f1Zones.find(z => z.code.includes('B'));
-
-  for (let i = 1; i <= 20; i++) {
-    slots.push({
-      slotCode: `F1A-${String(i).padStart(3, '0')}`,
-      parkingLot: lot._id,
-      floor: f1Floor._id,
-      zone: f1ZoneA._id,
-      vehicleType: carType._id,
-      status: 'available',
-      position: { row: 'A', column: i },
-    });
-  }
-  for (let i = 1; i <= 15; i++) {
-    slots.push({
-      slotCode: `F1B-${String(i).padStart(3, '0')}`,
-      parkingLot: lot._id,
-      floor: f1Floor._id,
-      zone: f1ZoneB._id,
-      vehicleType: motoType._id,
-      status: 'available',
-      position: { row: 'B', column: i },
-    });
-  }
-
-  // Floor 2 & 3: Car only
-  for (const floorNum of [2, 3]) {
-    const floor = floors.find(f => f.floorNumber === floorNum);
-    const floorZones = zones.filter(z => z.floor.toString() === floor._id.toString());
-    const zoneA = floorZones.find(z => z.code.includes('A'));
-    const zoneB = floorZones.find(z => z.code.includes('B'));
-
-    for (let i = 1; i <= 25; i++) {
+  // Floor 2: Motorbike
+  const f2Floor = floors.find(f => f.floorNumber === 2);
+  const f2Zones = zones.filter(z => z.floor.toString() === f2Floor._id.toString());
+  for (const zone of f2Zones) {
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 40; i++) {
       slots.push({
-        slotCode: `F${floorNum}A-${String(i).padStart(3, '0')}`,
+        slotCode: `F2${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
-        floor: floor._id,
-        zone: zoneA._id,
-        vehicleType: carType._id,
+        floor: f2Floor._id,
+        zone: zone._id,
+        vehicleType: motoType._id,
         status: 'available',
-        position: { row: 'A', column: i },
+        position: { row: rowCode, column: i },
       });
     }
-    for (let i = 1; i <= 25; i++) {
+  }
+
+  // Floor 3: Electric Bike
+  const f3Floor = floors.find(f => f.floorNumber === 3);
+  const f3Zones = zones.filter(z => z.floor.toString() === f3Floor._id.toString());
+  for (const zone of f3Zones) {
+    const rowCode = zone.code.slice(-1); // A or B
+    for (let i = 1; i <= 40; i++) {
       slots.push({
-        slotCode: `F${floorNum}B-${String(i).padStart(3, '0')}`,
+        slotCode: `F3${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
-        floor: floor._id,
-        zone: zoneB._id,
-        vehicleType: carType._id,
+        floor: f3Floor._id,
+        zone: zone._id,
+        vehicleType: eBikeType._id,
         status: 'available',
-        position: { row: 'B', column: i },
-        features: { hasEVCharger: i <= 5 }, // First 5 slots have EV charger
+        position: { row: rowCode, column: i },
+        features: { hasEVCharger: true }, // EV chargers for electric bikes
       });
     }
   }
