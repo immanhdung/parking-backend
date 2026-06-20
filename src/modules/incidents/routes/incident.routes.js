@@ -60,15 +60,17 @@ class IncidentService {
     return incident;
   }
 
-  async resolve(id, resolutionData, staffId) {
-    const incident = await Incident.findByIdAndUpdate(
-      id,
-      {
+  async resolve(id, resolutionData, staffId, file) {
+    const updateQuery = {
+      $set: {
         status: 'resolved',
         resolution: { ...resolutionData, resolvedBy: staffId, resolvedAt: new Date() },
-      },
-      { new: true }
-    );
+      }
+    };
+    if (file) {
+      updateQuery.$push = { images: { url: file.path, publicId: file.filename } };
+    }
+    const incident = await Incident.findByIdAndUpdate(id, updateQuery, { new: true });
     if (!incident) throw ApiError.notFound('Incident not found.');
     return incident;
   }
@@ -85,6 +87,7 @@ class IncidentService {
 }
 
 const incidentService = new IncidentService();
+const { uploadEvidence } = require('../../../config/cloudinary');
 
 // ===== ROUTES =====
 router.use(protect);
@@ -183,8 +186,8 @@ router.put('/:id', restrictTo('system_admin', 'parking_manager', 'parking_staff'
  *       200:
  *         description: Incident resolved
  */
-router.patch('/:id/resolve', restrictTo('system_admin', 'parking_manager', 'parking_staff'), asyncHandler(async (req, res) => {
-  const incident = await incidentService.resolve(req.params.id, req.body, req.user._id);
+router.patch('/:id/resolve', restrictTo('system_admin', 'parking_manager', 'parking_staff'), uploadEvidence.single('image'), asyncHandler(async (req, res) => {
+  const incident = await incidentService.resolve(req.params.id, req.body, req.user._id, req.file);
   ApiResponse.success(res, 'Incident resolved.', incident);
 }));
 
