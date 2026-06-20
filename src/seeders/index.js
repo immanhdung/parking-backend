@@ -166,36 +166,111 @@ const seedUsers = async (parkingLot) => {
   return created;
 };
 
-const seedParkingLot = async (managerUser) => {
+const seedParkingLots = async (managerUser) => {
   console.log('🏢 Seeding parking lots...');
 
-  const lot = await ParkingLot.create({
-    name: 'Bãi Xe Tòa Nhà Văn Phòng 123',
-    code: 'VP123',
-    description: 'Bãi xe hiện đại, an toàn, 24/7 CCTV, tự động hóa hoàn toàn',
-    address: {
-      street: '123 Nguyễn Huệ',
-      ward: 'Phường Bến Nghé',
-      district: 'Quận 1',
-      city: 'TP. Hồ Chí Minh',
-      coordinates: { lat: 10.7769, lng: 106.7009 },
+  const lotsToCreate = [
+    {
+      name: 'Bãi Xe Tòa Nhà Văn Phòng 123',
+      code: 'VP123',
+      description: 'Bãi xe hiện đại, an toàn, 24/7 CCTV, tự động hóa hoàn toàn',
+      address: {
+        street: '123 Nguyễn Huệ',
+        ward: 'Phường Bến Nghé',
+        district: 'Quận 1',
+        city: 'TP. Hồ Chí Minh',
+        coordinates: { lat: 10.7769, lng: 106.7009 },
+      },
+      manager: managerUser._id,
+      contactPhone: '028-1234-5678',
+      contactEmail: 'parking@vp123.com',
+      operatingHours: { open: '06:00', close: '22:00', is24Hours: false },
+      amenities: ['CCTV', 'Bảo vệ 24/7', 'Thang máy', 'Sạc điện EV', 'Wifi miễn phí'],
+      status: 'active',
+      settings: {
+        allowBooking: true,
+        maxBookingHours: 24,
+        maxAdvanceBookingDays: 7,
+        overtimeGracePeriodMinutes: 15,
+      },
     },
-    manager: managerUser._id,
-    contactPhone: '028-1234-5678',
-    contactEmail: 'parking@vp123.com',
-    operatingHours: { open: '06:00', close: '22:00', is24Hours: false },
-    amenities: ['CCTV', 'Bảo vệ 24/7', 'Thang máy', 'Sạc điện EV', 'Wifi miễn phí'],
-    status: 'active',
-    settings: {
-      allowBooking: true,
-      maxBookingHours: 24,
-      maxAdvanceBookingDays: 7,
-      overtimeGracePeriodMinutes: 15,
+    {
+      name: 'Bãi xe Bitexco Financial Tower',
+      code: 'BTX01',
+      description: 'Bãi xe trung tâm quận 1, an ninh cao',
+      address: {
+        street: '2 Hải Triều',
+        ward: 'Phường Bến Nghé',
+        district: 'Quận 1',
+        city: 'TP. Hồ Chí Minh',
+        coordinates: { lat: 10.7716, lng: 106.7044 },
+      },
+      manager: managerUser._id,
+      contactPhone: '028-1234-5679',
+      contactEmail: 'parking@bitexco.com',
+      operatingHours: { open: '00:00', close: '23:59', is24Hours: true },
+      amenities: ['CCTV', 'Bảo vệ 24/7', 'Thang máy', 'Sạc điện EV', 'Rửa xe'],
+      status: 'active',
+      settings: {
+        allowBooking: true,
+        maxBookingHours: 24,
+        maxAdvanceBookingDays: 7,
+        overtimeGracePeriodMinutes: 15,
+      },
     },
-  });
+    {
+      name: 'Bãi xe Vincom Center Đồng Khởi',
+      code: 'VNDK01',
+      description: 'Bãi xe tầng hầm Vincom Center',
+      address: {
+        street: '72 Lê Thánh Tôn',
+        ward: 'Phường Bến Nghé',
+        district: 'Quận 1',
+        city: 'TP. Hồ Chí Minh',
+        coordinates: { lat: 10.7781, lng: 106.7020 },
+      },
+      manager: managerUser._id,
+      contactPhone: '028-1234-5680',
+      contactEmail: 'parking@vincom.com',
+      operatingHours: { open: '08:00', close: '22:00', is24Hours: false },
+      amenities: ['CCTV', 'Bảo vệ 24/7', 'Thang máy', 'Xe đẩy'],
+      status: 'active',
+      settings: {
+        allowBooking: true,
+        maxBookingHours: 12,
+        maxAdvanceBookingDays: 3,
+        overtimeGracePeriodMinutes: 15,
+      },
+    },
+    {
+      name: 'Bãi xe sân bay Tân Sơn Nhất (Quốc Nội)',
+      code: 'TSN01',
+      description: 'Bãi xe ga quốc nội TSN, hoạt động 24/7',
+      address: {
+        street: 'Trường Sơn',
+        ward: 'Phường 2',
+        district: 'Tân Bình',
+        city: 'TP. Hồ Chí Minh',
+        coordinates: { lat: 10.8146, lng: 106.6661 },
+      },
+      manager: managerUser._id,
+      contactPhone: '028-1234-5681',
+      contactEmail: 'parking@tsn.com',
+      operatingHours: { open: '00:00', close: '23:59', is24Hours: true },
+      amenities: ['CCTV', 'Bảo vệ 24/7', 'Sạc điện EV', 'Xe buýt trung chuyển'],
+      status: 'active',
+      settings: {
+        allowBooking: true,
+        maxBookingHours: 72,
+        maxAdvanceBookingDays: 30,
+        overtimeGracePeriodMinutes: 60,
+      },
+    }
+  ];
 
-  console.log(`✅ Created parking lot: ${lot.name}`);
-  return lot;
+  const lots = await ParkingLot.insertMany(lotsToCreate);
+  console.log(`✅ Created ${lots.length} parking lots`);
+  return lots;
 };
 
 const seedFloorsAndZones = async (lot, vehicleTypes) => {
@@ -253,6 +328,8 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       zones.push(
         { floor: floor._id, parkingLot: lot._id, name: 'Khu A (Electric Car)', code: `F1A`, status: 'active', allowedVehicleTypes: [eCarType._id] },
         { floor: floor._id, parkingLot: lot._id, name: 'Khu B (Bicycle)', code: `F1B`, status: 'active', allowedVehicleTypes: [bikeType._id] },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu C (Electric Car)', code: `F1C`, status: 'active', allowedVehicleTypes: [eCarType._id] },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu D (Bicycle)', code: `F1D`, status: 'active', allowedVehicleTypes: [bikeType._id] },
       );
     } 
     // For others, just create Zone A and Zone B for the same vehicle type
@@ -260,6 +337,8 @@ const seedFloorsAndZones = async (lot, vehicleTypes) => {
       zones.push(
         { floor: floor._id, parkingLot: lot._id, name: 'Khu A', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}A`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
         { floor: floor._id, parkingLot: lot._id, name: 'Khu B', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}B`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu C', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}C`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
+        { floor: floor._id, parkingLot: lot._id, name: 'Khu D', code: `F${floor.floorNumber === -1 ? 'B1' : floor.floorNumber}D`, status: 'active', allowedVehicleTypes: floor.allowedVehicleTypes },
       );
     }
   }
@@ -286,8 +365,8 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
   const b1Zones = zones.filter(z => z.floor.toString() === b1Floor._id.toString());
   
   for (const zone of b1Zones) {
-    const rowCode = zone.code.slice(-1); // A or B
-    for (let i = 1; i <= 30; i++) {
+    const rowCode = zone.code.slice(-1); // A, B, C, D
+    for (let i = 1; i <= 15; i++) { // 15 * 4 = 60 slots
       slots.push({
         slotCode: `B1${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
@@ -300,42 +379,53 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
     }
   }
 
-  // Floor 1: Electric Car (Zone A) & Bicycle (Zone B)
+  // Floor 1: Electric Car (Zone A, C) & Bicycle (Zone B, D)
   const f1Floor = floors.find(f => f.floorNumber === 1);
   const f1Zones = zones.filter(z => z.floor.toString() === f1Floor._id.toString());
   const f1ZoneA = f1Zones.find(z => z.code.includes('A'));
   const f1ZoneB = f1Zones.find(z => z.code.includes('B'));
+  const f1ZoneC = f1Zones.find(z => z.code.includes('C'));
+  const f1ZoneD = f1Zones.find(z => z.code.includes('D'));
 
-  for (let i = 1; i <= 15; i++) {
-    slots.push({
-      slotCode: `F1A-${String(i).padStart(3, '0')}`,
-      parkingLot: lot._id,
-      floor: f1Floor._id,
-      zone: f1ZoneA._id,
-      vehicleType: eCarType._id,
-      status: 'available',
-      position: { row: 'A', column: i },
-      features: { hasEVCharger: true }, // all electric cars have EV charger
-    });
+  // Zone A, C for Electric Car: 8 slots each = 16 slots
+  for (const z of [f1ZoneA, f1ZoneC]) {
+    const rowCode = z.code.slice(-1);
+    for (let i = 1; i <= 8; i++) {
+      slots.push({
+        slotCode: `F1${rowCode}-${String(i).padStart(3, '0')}`,
+        parkingLot: lot._id,
+        floor: f1Floor._id,
+        zone: z._id,
+        vehicleType: eCarType._id,
+        status: 'available',
+        position: { row: rowCode, column: i },
+        features: { hasEVCharger: true },
+      });
+    }
   }
-  for (let i = 1; i <= 20; i++) {
-    slots.push({
-      slotCode: `F1B-${String(i).padStart(3, '0')}`,
-      parkingLot: lot._id,
-      floor: f1Floor._id,
-      zone: f1ZoneB._id,
-      vehicleType: bikeType._id,
-      status: 'available',
-      position: { row: 'B', column: i },
-    });
+  
+  // Zone B, D for Bicycle: 10 slots each = 20 slots
+  for (const z of [f1ZoneB, f1ZoneD]) {
+    const rowCode = z.code.slice(-1);
+    for (let i = 1; i <= 10; i++) {
+      slots.push({
+        slotCode: `F1${rowCode}-${String(i).padStart(3, '0')}`,
+        parkingLot: lot._id,
+        floor: f1Floor._id,
+        zone: z._id,
+        vehicleType: bikeType._id,
+        status: 'available',
+        position: { row: rowCode, column: i },
+      });
+    }
   }
 
   // Floor 2: Motorbike
   const f2Floor = floors.find(f => f.floorNumber === 2);
   const f2Zones = zones.filter(z => z.floor.toString() === f2Floor._id.toString());
   for (const zone of f2Zones) {
-    const rowCode = zone.code.slice(-1); // A or B
-    for (let i = 1; i <= 40; i++) {
+    const rowCode = zone.code.slice(-1); // A, B, C, D
+    for (let i = 1; i <= 20; i++) { // 20 * 4 = 80 slots
       slots.push({
         slotCode: `F2${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
@@ -352,8 +442,8 @@ const seedParkingSlots = async (lot, floors, zones, vehicleTypes) => {
   const f3Floor = floors.find(f => f.floorNumber === 3);
   const f3Zones = zones.filter(z => z.floor.toString() === f3Floor._id.toString());
   for (const zone of f3Zones) {
-    const rowCode = zone.code.slice(-1); // A or B
-    for (let i = 1; i <= 40; i++) {
+    const rowCode = zone.code.slice(-1); // A, B, C, D
+    for (let i = 1; i <= 20; i++) { // 20 * 4 = 80 slots
       slots.push({
         slotCode: `F3${rowCode}-${String(i).padStart(3, '0')}`,
         parkingLot: lot._id,
@@ -431,24 +521,34 @@ const runSeeder = async () => {
 
     await ParkingLot.deleteOne({ code: 'TEMP001' });
 
-    const lot = await seedParkingLot(managerUser);
+    const lots = await seedParkingLots(managerUser);
 
     // Update users with correct lot
     await User.updateMany(
       { role: { $in: ['parking_manager', 'parking_staff'] } },
-      { assignedParkingLot: lot._id }
+      { assignedParkingLot: lots[0]._id }
     );
 
     // Add staff to lot
-    await ParkingLot.findByIdAndUpdate(lot._id, {
+    await ParkingLot.findByIdAndUpdate(lots[0]._id, {
       staff: staffUsers.map(s => s._id),
     });
 
-    // 5. Floors and zones
-    const { createdFloors, createdZones } = await seedFloorsAndZones(lot, vehicleTypes);
+    let totalFloors = 0;
+    let totalZones = 0;
+    let totalSlots = 0;
 
-    // 6. Parking slots
-    const createdSlots = await seedParkingSlots(lot, createdFloors, createdZones, vehicleTypes);
+    for (const lot of lots) {
+      // 5. Floors and zones
+      const { createdFloors, createdZones } = await seedFloorsAndZones(lot, vehicleTypes);
+
+      // 6. Parking slots
+      const createdSlots = await seedParkingSlots(lot, createdFloors, createdZones, vehicleTypes);
+
+      totalFloors += createdFloors.length;
+      totalZones += createdZones.length;
+      totalSlots += createdSlots.length;
+    }
 
     console.log('\n🎉 Seeding completed successfully!\n');
     console.log('='.repeat(50));
@@ -473,10 +573,10 @@ const runSeeder = async () => {
     console.log(`\n📊 Stats:`);
     console.log(`   Vehicle Types: ${vehicleTypes.length}`);
     console.log(`   Users: ${users.length}`);
-    console.log(`   Parking Lots: 1`);
-    console.log(`   Floors: ${createdFloors.length}`);
-    console.log(`   Zones: ${createdZones.length}`);
-    console.log(`   Parking Slots: ${createdSlots.length}`);
+    console.log(`   Parking Lots: ${lots.length}`);
+    console.log(`   Floors: ${totalFloors}`);
+    console.log(`   Zones: ${totalZones}`);
+    console.log(`   Parking Slots: ${totalSlots}`);
     console.log('');
 
     process.exit(0);
