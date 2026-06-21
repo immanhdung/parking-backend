@@ -135,9 +135,14 @@ vehicleTypeRouter.use(protect);
  *               pricing:
  *                 type: object
  *                 properties:
- *                   hourlyRate:
+ *                   dayBlockRate:
  *                     type: number
  *                     example: 5000
+ *                     description: Price per 4-hour daytime block (6AM–6PM)
+ *                   nightBlockRate:
+ *                     type: number
+ *                     example: 7500
+ *                     description: Price per 4-hour nighttime block (6PM–6AM). Defaults to 1.5x dayBlockRate.
  *                   dailyRate:
  *                     type: number
  *                     example: 80000

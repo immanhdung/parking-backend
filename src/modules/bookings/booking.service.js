@@ -149,7 +149,7 @@ class BookingService {
     const recommendedSlot = suggestOptimalSlot(availableSlots, vType);
 
     // Estimate fee
-    const estimatedFee = Math.ceil(durationHours) * vType.pricing.hourlyRate;
+    const estimatedFee = Math.ceil(durationHours / 4) * vType.pricing.dayBlockRate;
 
     // Create booking
     const booking = await Booking.create({

@@ -39,7 +39,7 @@ const seedVehicleTypes = async () => {
       code: 'CAR',
       description: 'Ô tô 4 chỗ đến 7 chỗ',
       size: 'large',
-      pricing: { hourlyRate: 5000, dailyRate: 80000, monthlyRate: 1500000 },
+      pricing: { dayBlockRate: 5000, dailyRate: 80000, monthlyRate: 1500000 },
       isActive: true,
     },
     {
@@ -47,7 +47,7 @@ const seedVehicleTypes = async () => {
       code: 'ELECTRIC_CAR',
       description: 'Xe ô tô điện, xe điện cỡ lớn',
       size: 'large',
-      pricing: { hourlyRate: 6000, dailyRate: 90000, monthlyRate: 1700000 },
+      pricing: { dayBlockRate: 6000, dailyRate: 90000, monthlyRate: 1700000 },
       isActive: true,
     },
     {
@@ -55,7 +55,7 @@ const seedVehicleTypes = async () => {
       code: 'MOTORBIKE',
       description: 'Xe máy, xe mô tô',
       size: 'small',
-      pricing: { hourlyRate: 2000, dailyRate: 20000, monthlyRate: 400000 },
+      pricing: { dayBlockRate: 2000, dailyRate: 20000, monthlyRate: 400000 },
       isActive: true,
     },
     {
@@ -63,7 +63,7 @@ const seedVehicleTypes = async () => {
       code: 'BICYCLE',
       description: 'Xe đạp thường',
       size: 'small',
-      pricing: { hourlyRate: 1000, dailyRate: 10000, monthlyRate: 150000 },
+      pricing: { dayBlockRate: 1000, dailyRate: 10000, monthlyRate: 150000 },
       isActive: true,
     },
     {
@@ -71,7 +71,7 @@ const seedVehicleTypes = async () => {
       code: 'ELECTRIC_BIKE',
       description: 'Xe máy điện và xe đạp điện',
       size: 'small',
-      pricing: { hourlyRate: 2000, dailyRate: 25000, monthlyRate: 500000 },
+      pricing: { dayBlockRate: 2000, dailyRate: 25000, monthlyRate: 500000 },
       isActive: true,
     },
     {
@@ -79,7 +79,7 @@ const seedVehicleTypes = async () => {
       code: 'SMALL_TRUCK',
       description: 'Xe tải nhỏ và xe van',
       size: 'extra_large',
-      pricing: { hourlyRate: 10000, dailyRate: 150000, monthlyRate: 3000000 },
+      pricing: { dayBlockRate: 10000, dailyRate: 150000, monthlyRate: 3000000 },
       isActive: true,
     },
   ];

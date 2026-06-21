@@ -42,29 +42,43 @@ const generateQRCode = async (data) => {
 };
 
 /**
- * Calculate parking fee
+ * Calculate parking fee using 4-hour blocks
+ * - Daytime block (06:00–18:00): charged at dayBlockRate
+ * - Nighttime block (18:00–06:00): charged at nightBlockRate (default = dayBlockRate × 1.5)
+ * - Parking 1–4h in a block = 1 block charged
  * @param {Date} entryTime
  * @param {Date} exitTime
- * @param {Object} vehicleType - { hourlyRate, dailyRate }
+ * @param {Object} pricing - { dayBlockRate, nightBlockRate, dailyRate }
  */
-const calculateParkingFee = (entryTime, exitTime, vehicleType) => {
+const calculateParkingFee = (entryTime, exitTime, pricing) => {
   const durationMs = exitTime - entryTime;
   const durationHours = durationMs / (1000 * 60 * 60);
   const durationDays = Math.floor(durationHours / 24);
-  const remainingHours = durationHours % 24;
+
+  if (durationMs <= 0) {
+    return { fee: 0, durationMs: 0, durationHours: 0, durationDays: 0 };
+  }
 
   let fee = 0;
-  if (durationDays > 0) {
-    fee += durationDays * vehicleType.dailyRate;
-  }
-  if (remainingHours > 0) {
-    // Round up to next hour
-    fee += Math.ceil(remainingHours) * vehicleType.hourlyRate;
-  }
+  let currentStart = new Date(entryTime);
 
-  // Minimum 1 hour
-  if (fee === 0 && durationMs > 0) {
-    fee = vehicleType.hourlyRate;
+  while (currentStart < exitTime) {
+    const hour = currentStart.getHours();
+    // 06:00 to 17:59 is daytime, 18:00 to 05:59 is nighttime
+    const isDaytime = hour >= 6 && hour < 18;
+
+    const baseBlockRate = pricing.dayBlockRate;
+    // Nighttime rate from DB, fallback to dayBlockRate × 1.5
+    const nightBlockRate = pricing.nightBlockRate || (baseBlockRate * 1.5);
+
+    if (isDaytime) {
+      fee += baseBlockRate;
+    } else {
+      fee += nightBlockRate;
+    }
+
+    // Advance by 1 block (4 hours)
+    currentStart = new Date(currentStart.getTime() + 4 * 60 * 60 * 1000);
   }
 
   return {
@@ -77,15 +91,17 @@ const calculateParkingFee = (entryTime, exitTime, vehicleType) => {
 
 /**
  * Calculate overtime fee
+ * When customer stays past their booking end time, charge by extra blocks (same as normal parking)
  * @param {Date} scheduledEnd - Booking scheduled end time
  * @param {Date} actualExit - Actual exit time
- * @param {Number} hourlyRate
+ * @param {Object} pricing - { dayBlockRate, nightBlockRate }
  */
-const calculateOvertimeFee = (scheduledEnd, actualExit, hourlyRate) => {
+const calculateOvertimeFee = (scheduledEnd, actualExit, pricing) => {
   if (actualExit <= scheduledEnd) return 0;
-  const overtimeMs = actualExit - scheduledEnd;
-  const overtimeHours = Math.ceil(overtimeMs / (1000 * 60 * 60));
-  return overtimeHours * hourlyRate * 1.5; // 1.5x rate for overtime
+
+  // Reuse the same block-based logic for the overtime period
+  const { fee } = calculateParkingFee(scheduledEnd, actualExit, pricing);
+  return fee;
 };
 
 /**

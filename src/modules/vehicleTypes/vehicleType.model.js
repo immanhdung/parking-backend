@@ -23,9 +23,13 @@ const vehicleTypeSchema = new mongoose.Schema(
       required: true,
     },
     pricing: {
-      hourlyRate: {
+      dayBlockRate: {
         type: Number,
-        required: [true, 'Hourly rate is required'],
+        required: [true, 'Day block rate is required'],
+        min: [0, 'Rate cannot be negative'],
+      },
+      nightBlockRate: {
+        type: Number,
         min: [0, 'Rate cannot be negative'],
       },
       dailyRate: {

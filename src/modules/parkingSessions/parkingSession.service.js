@@ -249,7 +249,7 @@ class ParkingSessionService {
         const overtimeMs = exitTime - scheduledEnd;
         overtimeHours = overtimeMs / (1000 * 60 * 60);
         if (overtimeHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
-          overtimeFee = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing.hourlyRate);
+          overtimeFee = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing);
           isOvertime = true;
         }
       }
