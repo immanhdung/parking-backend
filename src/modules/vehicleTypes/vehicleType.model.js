@@ -42,10 +42,6 @@ const vehicleTypeSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
-      overtimeMultiplier: {
-        type: Number,
-        default: 1.5, // 1.5x for overtime
-      },
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
