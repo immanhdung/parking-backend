@@ -6,7 +6,7 @@ const ParkingLot = require('../parkingLots/parkingLot.model');
 const notificationService = require('../notifications/notification.service');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
-const { generateQRCode, suggestOptimalSlot } = require('../../utils/helpers');
+const { generateQRCode, suggestOptimalSlot, calculateParkingFee } = require('../../utils/helpers');
 const { emitSlotUpdate } = require('../../sockets/socket.server');
 
 class BookingService {
@@ -148,8 +148,12 @@ class BookingService {
 
     const recommendedSlot = suggestOptimalSlot(availableSlots, vType);
 
-    // Estimate fee
-    const estimatedFee = Math.ceil(durationHours / 4) * vType.pricing.dayBlockRate;
+    // Estimate fee using standardized block logic
+    const entryTime = new Date(scheduledDate);
+    entryTime.setHours(startH, startM, 0, 0);
+    const exitTime = new Date(entryTime.getTime() + durationHours * 60 * 60 * 1000);
+    
+    const { fee: estimatedFee } = calculateParkingFee(entryTime, exitTime, vType.pricing);
 
     // Create booking
     const booking = await Booking.create({

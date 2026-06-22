@@ -63,18 +63,29 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
   let currentStart = new Date(entryTime);
 
   while (currentStart < exitTime) {
-    const hour = currentStart.getHours();
+    // Determine the actual end of this block for fee calculation
+    const blockEnd = new Date(Math.min(exitTime.getTime(), currentStart.getTime() + 4 * 60 * 60 * 1000));
+    // Subtract 1ms so an exact boundary (like 18:00:00) doesn't count as crossing into the next hour
+    const effectiveEnd = new Date(blockEnd.getTime() - 1);
+
+    const startHour = currentStart.getHours();
+    const endHour = effectiveEnd.getHours();
+
     // 06:00 to 17:59 is daytime, 18:00 to 05:59 is nighttime
-    const isDaytime = hour >= 6 && hour < 18;
+    const isStartNight = startHour >= 18 || startHour < 6;
+    const isEndNight = endHour >= 18 || endHour < 6;
+    
+    // If any part of the block's actual duration is in the nighttime, charge as night block
+    const isNightBlock = isStartNight || isEndNight;
 
     const baseBlockRate = pricing.dayBlockRate;
     // Nighttime rate from DB, fallback to dayBlockRate × 1.5
     const nightBlockRate = pricing.nightBlockRate || (baseBlockRate * 1.5);
 
-    if (isDaytime) {
-      fee += baseBlockRate;
-    } else {
+    if (isNightBlock) {
       fee += nightBlockRate;
+    } else {
+      fee += baseBlockRate;
     }
 
     // Advance by 1 block (4 hours)
