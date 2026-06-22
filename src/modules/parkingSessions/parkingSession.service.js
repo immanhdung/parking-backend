@@ -208,7 +208,7 @@ class ParkingSessionService {
         title: 'Check-in Successful',
         message: `Your vehicle ${session.vehicleInfo.licensePlate} has been checked in at slot ${slot.slotCode}.`,
         data: { sessionId: session._id },
-      });
+      }, io);
     }
 
     return session.populate([
@@ -312,7 +312,7 @@ class ParkingSessionService {
         title: 'Check-out Successful',
         message: `Vehicle ${session.vehicleInfo.licensePlate} checked out. Total fee: ${totalFee.toLocaleString('vi-VN')} VND`,
         data: { sessionId: session._id, totalFee },
-      });
+      }, io);
     }
 
     return session;
