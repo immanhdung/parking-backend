@@ -210,7 +210,7 @@ const suggestOptimalSlot = (availableSlots, vehicleType) => {
  * Format: PAR + DDMM + 6 random alphanumeric chars
  * Example: PAR1606A3B2C1
  */
-const generateTransferContent = () => {
+const generateTransferContent = (prefix = 'PAR') => {
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
   const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -219,7 +219,7 @@ const generateTransferContent = () => {
   for (let i = 0; i < 6; i++) {
     random += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return `PAR${dd}${mm}${random}`;
+  return `${prefix}${dd}${mm}${random}`;
 };
 
 module.exports = {

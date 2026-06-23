@@ -335,6 +335,54 @@ class PaymentService {
   }
 
   /**
+   * Initiate bank transfer payment for MONTHLY PASS
+   */
+  async initiateMonthlyPassBankTransfer(monthlyPassId, userId) {
+    const { generateTransferContent } = require('../../utils/helpers');
+    const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
+
+    const monthlyPass = await MonthlyPass.findById(monthlyPassId);
+    if (!monthlyPass) throw ApiError.notFound('Monthly pass not found.');
+    if (monthlyPass.paymentStatus === 'paid') {
+      throw ApiError.badRequest('Monthly pass is already paid.');
+    }
+
+    const amount = monthlyPass.price;
+    if (!amount || amount <= 0) {
+      throw ApiError.badRequest('Invalid payment amount.');
+    }
+
+    const transferContent = generateTransferContent('MP');
+
+    const bankId = process.env.SEPAY_BANK_ID || 'MB';
+    const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
+    const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+
+    const payment = await Payment.create({
+      monthlyPass: monthlyPassId,
+      user: userId,
+      parkingLot: monthlyPass.parkingLot,
+      amount,
+      baseFee: amount,
+      overtimeFee: 0,
+      method: 'bank_transfer',
+      status: 'pending',
+      transferContent,
+      bankTransferQrUrl: qrUrl,
+      paymentType: 'monthly_pass',
+    });
+
+    return {
+      payment,
+      transferContent,
+      amount,
+      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME },
+      qrUrl,
+    };
+  }
+
+  /**
    * Handle SEPay webhook callback
    * SEPay sends POST when a bank transfer is received
    * We match the transfer content to find and confirm the pending payment
@@ -366,8 +414,8 @@ class PaymentService {
       return { matched: false, reason: 'No transfer content' };
     }
 
-    // Extract PAR code from transfer content
-    const parMatch = content.match(/PAR\d{4}[A-Z0-9]{6}/i);
+    // Extract PAR or MP code from transfer content
+    const parMatch = content.match(/(PAR|MP)\d{4}[A-Z0-9]{6}/i);
     const transferContentCode = parMatch ? parMatch[0].toUpperCase() : null;
     let payment = null;
 
@@ -378,7 +426,7 @@ class PaymentService {
         transferContent: transferContentCode,
         status: 'pending',
         method: 'bank_transfer',
-      }).populate('parkingSession').populate('booking');
+      }).populate('parkingSession booking monthlyPass');
     }
 
     // Fallback: If MoMo/ZaloPay overwrites the transfer content, match by EXACT AMOUNT
@@ -388,7 +436,7 @@ class PaymentService {
         amount: transferAmount,
         status: 'pending',
         method: 'bank_transfer',
-      }).populate('parkingSession').populate('booking');
+      }).populate('parkingSession booking monthlyPass');
 
       if (pendingPayments.length === 1) {
         payment = pendingPayments[0];
@@ -430,6 +478,26 @@ class PaymentService {
       if (io) {
         io.emit('bookingPaymentConfirmed', {
           bookingId: booking ? booking._id : payment.booking,
+          paymentId: payment._id,
+          amount: payment.amount,
+          invoiceCode: payment.invoiceCode,
+          transferContent: transferContentCode,
+        });
+      }
+    } else if (payment.paymentType === 'monthly_pass' && payment.monthlyPass) {
+      const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
+      const monthlyPass = await MonthlyPass.findById(payment.monthlyPass._id || payment.monthlyPass);
+      if (monthlyPass) {
+        monthlyPass.paymentStatus = 'paid';
+        monthlyPass.status = 'active'; // Activate monthly pass upon payment
+        monthlyPass.payment = payment._id;
+        await monthlyPass.save();
+        logger.info(`[SEPay Webhook] Monthly Pass ${monthlyPass.passCode} marked as paid and active.`);
+      }
+
+      if (io) {
+        io.emit('monthlyPassPaymentConfirmed', {
+          monthlyPassId: monthlyPass ? monthlyPass._id : payment.monthlyPass,
           paymentId: payment._id,
           amount: payment.amount,
           invoiceCode: payment.invoiceCode,

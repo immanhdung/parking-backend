@@ -61,6 +61,16 @@ class PaymentController {
   });
 
   /**
+   * POST /payments/bank-transfer/monthly-pass/initiate
+   * Create pending payment + generate SEPay QR code URL for MONTHLY PASS
+   */
+  initiateMonthlyPassBankTransfer = asyncHandler(async (req, res) => {
+    const { monthlyPassId } = req.body;
+    const result = await paymentService.initiateMonthlyPassBankTransfer(monthlyPassId, req.user._id);
+    ApiResponse.created(res, 'Monthly pass bank transfer QR code generated.', result);
+  });
+
+  /**
    * POST /payments/sepay-webhook
    * Public endpoint - called by SEPay when bank transfer is received
    * NO authentication required (verified by SEPay API key header)

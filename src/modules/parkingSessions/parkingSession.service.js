@@ -3,6 +3,7 @@ const ParkingSlot = require('../parkingSlots/parkingSlot.model');
 const Booking = require('../bookings/booking.model');
 const VehicleType = require('../vehicleTypes/vehicleType.model');
 const Payment = require('../payments/payment.model');
+const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
 const notificationService = require('../notifications/notification.service');
 const parkingLotService = require('../parkingLots/parkingLot.service');
 const ApiError = require('../../utils/ApiError');
@@ -82,6 +83,7 @@ class ParkingSessionService {
   async checkIn(data, staffId, io) {
     const {
       bookingId,
+      monthlyPassCode,
       licensePlate,
       vehicleTypeId,
       parkingLotId,
@@ -92,13 +94,47 @@ class ParkingSessionService {
     } = data;
 
     let booking = null;
+    let monthlyPass = null;
     let slot = null;
     let vehicleType = null;
     let userId = null;
     let floorId, zoneId;
 
-    // If checking in via booking
-    if (bookingId) {
+    if (monthlyPassCode) {
+      // Check-in via Monthly Pass QR Code
+      monthlyPass = await MonthlyPass.findOne({
+        passCode: monthlyPassCode,
+        status: 'active',
+        startDate: { $lte: new Date() },
+        endDate: { $gte: new Date() },
+      }).populate('vehicleType');
+
+      if (!monthlyPass) throw ApiError.badRequest('Active monthly pass not found or expired.');
+
+      vehicleType = monthlyPass.vehicleType;
+      userId = monthlyPass.user;
+      const actualParkingLotId = parkingLotId || monthlyPass.parkingLot;
+
+      if (slotId) {
+        slot = await ParkingSlot.findById(slotId).populate('floor zone');
+        if (!slot) throw ApiError.notFound('Slot not found.');
+        if (slot.status !== 'available') throw ApiError.badRequest(`Slot ${slot.slotCode} is not available.`);
+        floorId = slot.floor._id || slot.floor;
+        zoneId = slot.zone?._id || slot.zone;
+      } else {
+        const available = await ParkingSlot.findOne({
+          parkingLot: actualParkingLotId,
+          vehicleType: vehicleType._id || vehicleType,
+          status: 'available',
+        }).populate('floor zone').sort({ 'floor.floorNumber': 1 });
+
+        if (!available) throw ApiError.badRequest('No available slots for this vehicle type.');
+        slot = available;
+        floorId = available.floor._id || available.floor;
+        zoneId = available.zone?._id || available.zone;
+      }
+    } else if (bookingId) {
+      // If checking in via booking
       booking = await Booking.findById(bookingId).populate('vehicleType').populate('assignedSlot');
       if (!booking) throw ApiError.notFound('Booking not found.');
       if (booking.status !== 'approved') throw ApiError.badRequest('Booking is not approved.');
@@ -143,18 +179,31 @@ class ParkingSessionService {
     // Generate session code
     const sessionCode = `PS-${Date.now().toString(36).toUpperCase()}-${uuidv4().substring(0, 6).toUpperCase()}`;
 
+    const actualLicensePlate = (monthlyPass?.licensePlate || licensePlate || booking?.vehicleInfo?.licensePlate || '').toUpperCase();
+
+    // Check for active monthly pass by plate if not provided via QR code
+    if (!monthlyPass) {
+      monthlyPass = await MonthlyPass.findOne({
+        licensePlate: actualLicensePlate,
+        status: 'active',
+        startDate: { $lte: new Date() },
+        endDate: { $gte: new Date() },
+      });
+    }
+
     // Create parking session
     const session = await ParkingSession.create({
       sessionCode,
-      user: userId,
+      user: userId || monthlyPass?.user,
       booking: booking?._id,
+      monthlyPass: monthlyPass?._id,
       parkingLot: parkingLotId || slot.parkingLot,
       floor: floorId,
       zone: zoneId,
       slot: slot._id,
       vehicleType: vehicleType._id || vehicleType,
       vehicleInfo: {
-        licensePlate: (licensePlate || booking?.vehicleInfo?.licensePlate || '').toUpperCase(),
+        licensePlate: actualLicensePlate,
         vehicleModel: vehicleModel || booking?.vehicleInfo?.vehicleModel,
         vehicleColor: vehicleColor || booking?.vehicleInfo?.vehicleColor,
       },
@@ -225,34 +274,50 @@ class ParkingSessionService {
     const session = await ParkingSession.findById(sessionId)
       .populate('vehicleType')
       .populate('slot')
-      .populate('booking', 'endTime scheduledDate');
+      .populate('booking', 'endTime scheduledDate estimatedFee')
+      .populate('monthlyPass');
 
     if (!session) throw ApiError.notFound('Session not found.');
     if (session.status !== 'active') throw ApiError.badRequest('Session is not active.');
 
     const exitTime = new Date();
-    const { fee, durationMs, durationHours } = calculateParkingFee(
-      session.entryTime,
-      exitTime,
-      session.vehicleType.pricing
-    );
+    
+    let fee = 0;
+    const durationMs = exitTime - session.entryTime;
+    const durationHours = durationMs / (1000 * 60 * 60);
 
     // Calculate overtime fee if there was a booking
     let overtimeFee = 0;
     let isOvertime = false;
     let overtimeHours = 0;
 
-    if (session.booking?.endTime && session.booking?.scheduledDate) {
-      const scheduledEndStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.endTime}:00`;
-      const scheduledEnd = new Date(scheduledEndStr);
-      if (exitTime > scheduledEnd) {
-        const overtimeMs = exitTime - scheduledEnd;
-        overtimeHours = overtimeMs / (1000 * 60 * 60);
-        if (overtimeHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
-          overtimeFee = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing);
-          isOvertime = true;
+    if (session.monthlyPass) {
+      // Monthly pass covers the entire fee
+      fee = 0;
+      overtimeFee = 0;
+    } else if (session.booking) {
+      fee = session.booking.estimatedFee || 0; // Base fee is the booking fee
+
+      if (session.booking.endTime && session.booking.scheduledDate) {
+        const scheduledEndStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.endTime}:00`;
+        const scheduledEnd = new Date(scheduledEndStr);
+        if (exitTime > scheduledEnd) {
+          const overtimeMs = exitTime - scheduledEnd;
+          overtimeHours = overtimeMs / (1000 * 60 * 60);
+          if (overtimeHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
+            overtimeFee = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing);
+            isOvertime = true;
+          }
         }
       }
+    } else {
+      // Walk-in check-in, calculate normal fee
+      const calculated = calculateParkingFee(
+        session.entryTime,
+        exitTime,
+        session.vehicleType.pricing
+      );
+      fee = calculated.fee;
     }
 
     const totalFee = fee + overtimeFee;

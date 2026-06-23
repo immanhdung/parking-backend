@@ -167,6 +167,28 @@ router.post('/bank-transfer/booking/initiate', ctrl.initiateBookingBankTransfer)
 
 /**
  * @swagger
+ * /payments/bank-transfer/monthly-pass/initiate:
+ *   post:
+ *     summary: Initiate bank transfer payment for monthly pass
+ *     tags: [Payments]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [monthlyPassId]
+ *             properties:
+ *               monthlyPassId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: QR code generated
+ */
+router.post('/bank-transfer/monthly-pass/initiate', restrictTo('parking_user', 'system_admin', 'parking_manager'), ctrl.initiateMonthlyPassBankTransfer);
+
+/**
+ * @swagger
  * /payments/bank-transfer/{id}/status:
  *   get:
  *     summary: Check bank transfer payment status

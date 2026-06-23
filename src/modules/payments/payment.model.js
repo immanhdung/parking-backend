@@ -15,9 +15,13 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
     },
+    monthlyPass: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MonthlyPass',
+    },
     paymentType: {
       type: String,
-      enum: ['booking', 'session_checkout'],
+      enum: ['booking', 'session_checkout', 'monthly_pass'],
       default: 'session_checkout',
     },
     user: {

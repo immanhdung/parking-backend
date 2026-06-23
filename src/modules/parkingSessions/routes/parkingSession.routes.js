@@ -90,6 +90,9 @@ router.get('/overdue', restrictTo('system_admin', 'parking_manager', 'parking_st
  *               bookingId:
  *                 type: string
  *                 description: Provide for booking-based check-in
+ *               monthlyPassCode:
+ *                 type: string
+ *                 description: Provide for monthly pass QR-based check-in
  *               licensePlate:
  *                 type: string
  *                 example: 51A-12345

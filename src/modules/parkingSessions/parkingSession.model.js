@@ -16,6 +16,10 @@ const parkingSessionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
     },
+    monthlyPass: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MonthlyPass',
+    },
     parkingLot: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ParkingLot',
