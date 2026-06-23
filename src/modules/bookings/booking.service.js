@@ -132,10 +132,13 @@ class BookingService {
       throw ApiError.badRequest('End time must be after start time.');
     }
 
-    // Estimate fee using standardized block logic
+    // Calculate original entry and exit times
     const entryTime = new Date(scheduledDate);
     entryTime.setHours(startH, startM, 0, 0);
     const exitTime = new Date(entryTime.getTime() + durationHours * 60 * 60 * 1000);
+
+    let finalEntryTime = new Date(entryTime);
+    let finalExitTime = new Date(exitTime);
 
     // Check for overlapping bookings for the same license plate
     if (resolvedVehicleInfo && resolvedVehicleInfo.licensePlate) {
@@ -156,11 +159,29 @@ class BookingService {
         ebEntryTime.setHours(ebStartH, ebStartM, 0, 0);
         const ebExitTime = new Date(ebEntryTime.getTime() + ebDuration * 60 * 60 * 1000);
 
-        if (entryTime < ebExitTime && exitTime > ebEntryTime) {
-          throw ApiError.badRequest(`Xe có biển số ${resolvedVehicleInfo.licensePlate} đã có lịch đặt trước trùng lặp với thời gian bạn chọn.`);
+        if (finalEntryTime < ebExitTime && finalExitTime > ebEntryTime) {
+          if (finalEntryTime >= ebEntryTime && finalExitTime <= ebExitTime) {
+            throw ApiError.badRequest(`Vehicle with license plate ${resolvedVehicleInfo.licensePlate} already has a booking that completely covers this time period.`);
+          }
+          // Partial overlap handling
+          if (finalEntryTime >= ebEntryTime && finalEntryTime < ebExitTime && finalExitTime > ebExitTime) {
+            finalEntryTime = new Date(ebExitTime);
+          } else if (finalExitTime > ebEntryTime && finalExitTime <= ebExitTime && finalEntryTime < ebEntryTime) {
+            finalExitTime = new Date(ebEntryTime);
+          } else if (finalEntryTime < ebEntryTime && finalExitTime > ebExitTime) {
+            finalEntryTime = new Date(ebExitTime);
+          }
         }
       }
     }
+
+    let finalDurationHours = (finalExitTime - finalEntryTime) / (60 * 60 * 1000);
+    if (finalDurationHours <= 0) {
+      throw ApiError.badRequest(`The selected time period is completely overlapped by an existing booking.`);
+    }
+
+    let finalStartTime = `${String(finalEntryTime.getHours()).padStart(2, '0')}:${String(finalEntryTime.getMinutes()).padStart(2, '0')}`;
+    let finalEndTime = `${String(finalExitTime.getHours()).padStart(2, '0')}:${String(finalExitTime.getMinutes()).padStart(2, '0')}`;
 
     // Find optimal available slot (AI suggestion)
     const filter = {
@@ -179,7 +200,7 @@ class BookingService {
     const recommendedSlot = suggestOptimalSlot(availableSlots, vType);
 
     // Estimate fee using standardized block logic
-    const { fee: estimatedFee } = calculateParkingFee(entryTime, exitTime, vType.pricing);
+    const { fee: estimatedFee } = calculateParkingFee(finalEntryTime, finalExitTime, vType.pricing);
 
     // Create booking
     const booking = await Booking.create({
@@ -190,10 +211,10 @@ class BookingService {
       assignedSlot: recommendedSlot?._id,
       vehicleType: resolvedVehicleType,
       vehicleInfo: resolvedVehicleInfo,
-      scheduledDate: new Date(scheduledDate),
-      startTime,
-      endTime,
-      estimatedDuration: durationHours,
+      scheduledDate: new Date(finalEntryTime),
+      startTime: finalStartTime,
+      endTime: finalEndTime,
+      estimatedDuration: finalDurationHours,
       estimatedFee,
       notes,
       status: 'pending',
