@@ -132,6 +132,36 @@ class BookingService {
       throw ApiError.badRequest('End time must be after start time.');
     }
 
+    // Estimate fee using standardized block logic
+    const entryTime = new Date(scheduledDate);
+    entryTime.setHours(startH, startM, 0, 0);
+    const exitTime = new Date(entryTime.getTime() + durationHours * 60 * 60 * 1000);
+
+    // Check for overlapping bookings for the same license plate
+    if (resolvedVehicleInfo && resolvedVehicleInfo.licensePlate) {
+      const existingBookings = await Booking.find({
+        'vehicleInfo.licensePlate': resolvedVehicleInfo.licensePlate,
+        status: { $in: ['pending', 'approved'] },
+      });
+
+      for (const eb of existingBookings) {
+        const [ebStartH, ebStartM] = eb.startTime.split(':').map(Number);
+        let [ebEndH, ebEndM] = eb.endTime.split(':').map(Number);
+        if (ebEndH < ebStartH || (ebEndH === ebStartH && ebEndM < ebStartM)) {
+          ebEndH += 24;
+        }
+        const ebDuration = (ebEndH * 60 + ebEndM - (ebStartH * 60 + ebStartM)) / 60;
+        
+        const ebEntryTime = new Date(eb.scheduledDate);
+        ebEntryTime.setHours(ebStartH, ebStartM, 0, 0);
+        const ebExitTime = new Date(ebEntryTime.getTime() + ebDuration * 60 * 60 * 1000);
+
+        if (entryTime < ebExitTime && exitTime > ebEntryTime) {
+          throw ApiError.badRequest(`Xe có biển số ${resolvedVehicleInfo.licensePlate} đã có lịch đặt trước trùng lặp với thời gian bạn chọn.`);
+        }
+      }
+    }
+
     // Find optimal available slot (AI suggestion)
     const filter = {
       parkingLot,
@@ -149,10 +179,6 @@ class BookingService {
     const recommendedSlot = suggestOptimalSlot(availableSlots, vType);
 
     // Estimate fee using standardized block logic
-    const entryTime = new Date(scheduledDate);
-    entryTime.setHours(startH, startM, 0, 0);
-    const exitTime = new Date(entryTime.getTime() + durationHours * 60 * 60 * 1000);
-    
     const { fee: estimatedFee } = calculateParkingFee(entryTime, exitTime, vType.pricing);
 
     // Create booking
