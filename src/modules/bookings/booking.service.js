@@ -140,8 +140,22 @@ class BookingService {
     let finalEntryTime = new Date(entryTime);
     let finalExitTime = new Date(exitTime);
 
-    // Check for overlapping bookings for the same license plate
     if (resolvedVehicleInfo && resolvedVehicleInfo.licensePlate) {
+      // Check if the vehicle has an active monthly pass for this parking lot during the selected time
+      const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
+      const activePass = await MonthlyPass.findOne({
+        licensePlate: resolvedVehicleInfo.licensePlate.toUpperCase(),
+        parkingLot: parkingLot,
+        status: 'active',
+        startDate: { $lte: finalExitTime },
+        endDate: { $gte: finalEntryTime }
+      });
+
+      if (activePass) {
+        throw ApiError.badRequest('This vehicle already has an active monthly pass for this parking lot. Booking is not required.');
+      }
+
+      // Check for overlapping bookings for the same license plate
       const existingBookings = await Booking.find({
         'vehicleInfo.licensePlate': resolvedVehicleInfo.licensePlate,
         status: { $in: ['pending', 'approved'] },

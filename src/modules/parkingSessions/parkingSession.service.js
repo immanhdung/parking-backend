@@ -113,6 +113,11 @@ class ParkingSessionService {
 
       vehicleType = monthlyPass.vehicleType;
       userId = monthlyPass.user;
+      
+      if (parkingLotId && monthlyPass.parkingLot.toString() !== parkingLotId.toString()) {
+        throw ApiError.badRequest('This monthly pass is not valid for this parking lot.');
+      }
+      
       const actualParkingLotId = parkingLotId || monthlyPass.parkingLot;
 
       if (slotId) {
@@ -138,6 +143,10 @@ class ParkingSessionService {
       booking = await Booking.findById(bookingId).populate('vehicleType').populate('assignedSlot');
       if (!booking) throw ApiError.notFound('Booking not found.');
       if (booking.status !== 'approved') throw ApiError.badRequest('Booking is not approved.');
+
+      if (parkingLotId && booking.parkingLot.toString() !== parkingLotId.toString()) {
+        throw ApiError.badRequest('This booking is not valid for this parking lot.');
+      }
 
       slot = booking.assignedSlot;
       vehicleType = booking.vehicleType;
@@ -292,9 +301,26 @@ class ParkingSessionService {
     let overtimeHours = 0;
 
     if (session.monthlyPass) {
-      // Monthly pass covers the entire fee
-      fee = 0;
-      overtimeFee = 0;
+      if (exitTime > session.monthlyPass.endDate) {
+        // Pass expired during the session
+        const expiredMs = exitTime - session.monthlyPass.endDate;
+        const expiredHours = expiredMs / (1000 * 60 * 60);
+        
+        // Charge normal parking fee for the time after expiration
+        const calculated = calculateParkingFee(
+          session.monthlyPass.endDate,
+          exitTime,
+          session.vehicleType.pricing
+        );
+        fee = 0; // Base fee (before expiration) is covered by the pass
+        overtimeFee = calculated.fee;
+        isOvertime = true;
+        overtimeHours = expiredHours;
+      } else {
+        // Monthly pass covers the entire fee
+        fee = 0;
+        overtimeFee = 0;
+      }
     } else if (session.booking) {
       fee = session.booking.estimatedFee || 0; // Base fee is the booking fee
 

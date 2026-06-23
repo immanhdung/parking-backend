@@ -15,22 +15,27 @@ class MonthlyPassService {
       throw ApiError.badRequest('This vehicle type does not support monthly passes.');
     }
 
-    // Check if there is already an active pass for this license plate
+    // Find the latest active or pending pass for this vehicle in the SAME parking lot
     const existingPass = await MonthlyPass.findOne({
       licensePlate: licensePlate.toUpperCase(),
+      parkingLot: parkingLotId,
       status: { $in: ['pending', 'active'] },
       endDate: { $gte: new Date() },
-    });
+    }).sort({ endDate: -1 });
+
+    const startDate = data.startDate ? new Date(data.startDate) : new Date();
+    startDate.setHours(0, 0, 0, 0); // start at beginning of day
 
     if (existingPass) {
-      throw ApiError.badRequest('An active or pending monthly pass already exists for this license plate.');
+      // If there is an existing pass, the new one starts the day after it expires (renewal)
+      startDate.setTime(existingPass.endDate.getTime());
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
     }
-
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0); // start at beginning of day
     
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + parseInt(months));
+    endDate.setDate(endDate.getDate() - 1); // Adjust so it ends on the last valid day
     endDate.setHours(23, 59, 59, 999); // end at end of day
 
     const monthlyPass = await MonthlyPass.create({

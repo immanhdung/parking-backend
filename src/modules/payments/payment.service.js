@@ -341,10 +341,24 @@ class PaymentService {
     const { generateTransferContent } = require('../../utils/helpers');
     const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
 
-    const monthlyPass = await MonthlyPass.findById(monthlyPassId);
+    const monthlyPass = await MonthlyPass.findById(monthlyPassId).populate('vehicleType');
     if (!monthlyPass) throw ApiError.notFound('Monthly pass not found.');
     if (monthlyPass.paymentStatus === 'paid') {
       throw ApiError.badRequest('Monthly pass is already paid.');
+    }
+
+    // Re-calculate price from current vehicleType monthlyRate
+    const VehicleType = require('../vehicleTypes/vehicleType.model');
+    const vt = monthlyPass.vehicleType?._id
+      ? monthlyPass.vehicleType
+      : await VehicleType.findById(monthlyPass.vehicleType);
+    if (vt?.pricing?.monthlyRate) {
+      const months = Math.round((new Date(monthlyPass.endDate) - new Date(monthlyPass.startDate)) / (30.44 * 24 * 60 * 60 * 1000)) || 1;
+      const freshPrice = vt.pricing.monthlyRate * months;
+      if (freshPrice !== monthlyPass.price) {
+        monthlyPass.price = freshPrice;
+        await monthlyPass.save();
+      }
     }
 
     const amount = monthlyPass.price;
