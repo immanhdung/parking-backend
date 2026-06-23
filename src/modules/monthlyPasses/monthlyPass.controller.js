@@ -1,28 +1,28 @@
 const monthlyPassService = require('./monthlyPass.service');
-const catchAsync = require('../../utils/catchAsync');
-const { sendResponse } = require('../../utils/response');
+const asyncHandler = require('../../utils/asyncHandler');
+const ApiResponse = require('../../utils/ApiResponse');
 
-exports.createMonthlyPass = catchAsync(async (req, res) => {
+exports.createMonthlyPass = asyncHandler(async (req, res) => {
   const monthlyPass = await monthlyPassService.createMonthlyPass(req.body, req.user);
-  sendResponse(res, 201, 'Monthly pass created successfully', monthlyPass);
+  ApiResponse.created(res, 'Monthly pass created successfully', monthlyPass);
 });
 
-exports.getMyMonthlyPasses = catchAsync(async (req, res) => {
+exports.getMyMonthlyPasses = asyncHandler(async (req, res) => {
   const result = await monthlyPassService.getMyMonthlyPasses(req.user, req.query);
-  sendResponse(res, 200, 'My monthly passes retrieved successfully', result);
+  ApiResponse.success(res, 'My monthly passes retrieved successfully', result);
 });
 
-exports.getAllMonthlyPasses = catchAsync(async (req, res) => {
+exports.getAllMonthlyPasses = asyncHandler(async (req, res) => {
   const result = await monthlyPassService.getAllMonthlyPasses(req.query);
-  sendResponse(res, 200, 'Monthly passes retrieved successfully', result);
+  ApiResponse.success(res, 'Monthly passes retrieved successfully', result);
 });
 
-exports.getMonthlyPassById = catchAsync(async (req, res) => {
+exports.getMonthlyPassById = asyncHandler(async (req, res) => {
   const monthlyPass = await monthlyPassService.getMonthlyPassById(req.params.id);
-  sendResponse(res, 200, 'Monthly pass retrieved successfully', monthlyPass);
+  ApiResponse.success(res, 'Monthly pass retrieved successfully', monthlyPass);
 });
 
-exports.changeVehicle = catchAsync(async (req, res) => {
+exports.changeVehicle = asyncHandler(async (req, res) => {
   const monthlyPass = await monthlyPassService.changeVehicle(req.params.id, req.user, req.body);
-  sendResponse(res, 200, 'Vehicle changed successfully', monthlyPass);
+  ApiResponse.success(res, 'Vehicle changed successfully', monthlyPass);
 });
