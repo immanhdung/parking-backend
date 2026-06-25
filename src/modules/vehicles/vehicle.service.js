@@ -1,5 +1,6 @@
 const Vehicle = require('./vehicle.model');
 const VehicleType = require('../vehicleTypes/vehicleType.model');
+const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 
@@ -84,20 +85,34 @@ class VehicleService {
       throw ApiError.forbidden('Access denied.');
     }
 
+    // If changing vehicle type, validate it BEFORE mutating the vehicle
+    if (data.vehicleType) {
+      const vType = await VehicleType.findById(data.vehicleType);
+      if (!vType || !vType.isActive) {
+        throw ApiError.badRequest('Vehicle type is not available.');
+      }
+
+      // Block vehicleType change if vehicle has an active/pending monthly pass
+      const currentVehicleTypeId = vehicle.vehicleType?.toString();
+      if (currentVehicleTypeId && data.vehicleType.toString() !== currentVehicleTypeId) {
+        const activeMonthlyPass = await MonthlyPass.findOne({
+          licensePlate: vehicle.licensePlate,
+          status: { $in: ['active', 'pending'] },
+        });
+        if (activeMonthlyPass) {
+          throw ApiError.badRequest(
+            'Cannot change vehicle type while this vehicle has an active or pending monthly pass. Please cancel or wait for the pass to expire first.'
+          );
+        }
+      }
+    }
+
     const allowedFields = ['vehicleType', 'licensePlate', 'vehicleModel', 'vehicleColor', 'vehicleBrand', 'nickname', 'isDefault'];
     allowedFields.forEach(field => {
       if (data[field] !== undefined) {
         vehicle[field] = field === 'licensePlate' ? data[field].toUpperCase().trim() : data[field];
       }
     });
-
-    // If changing vehicle type, validate it
-    if (data.vehicleType) {
-      const vType = await VehicleType.findById(data.vehicleType);
-      if (!vType || !vType.isActive) {
-        throw ApiError.badRequest('Vehicle type is not available.');
-      }
-    }
 
     // If changing license plate, check duplicate
     if (data.licensePlate) {
