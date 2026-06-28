@@ -290,15 +290,22 @@ class ParkingSessionService {
     if (session.status !== 'active') throw ApiError.badRequest('Session is not active.');
 
     const exitTime = new Date();
-    
-    let fee = 0;
     const durationMs = exitTime - session.entryTime;
     const durationHours = durationMs / (1000 * 60 * 60);
-
+    
+    let fee = 0;
+    
     // Calculate overtime fee if there was a booking
     let overtimeFee = 0;
     let isOvertime = false;
     let overtimeHours = 0;
+    let overtimeBlocks = 0;
+    
+    // Block tracking
+    let dayBlocksCount = 0;
+    let nightBlocksCount = 0;
+    let totalBlocks = 0;
+    let surchargeLogs = [];
 
     if (session.monthlyPass) {
       if (exitTime > session.monthlyPass.endDate) {
@@ -316,6 +323,15 @@ class ParkingSessionService {
         overtimeFee = calculated.fee;
         isOvertime = true;
         overtimeHours = expiredHours;
+        overtimeBlocks = calculated.totalBlocks;
+        
+        // Use logs as surcharge logs since this is effectively overtime
+        surchargeLogs = calculated.logs.map(log => ({
+          type: 'late',
+          timestamp: log.start,
+          amount: log.amount,
+          label: 'Pass Expired Surcharge'
+        }));
       } else {
         // Monthly pass covers the entire fee
         fee = 0;
@@ -331,7 +347,10 @@ class ParkingSessionService {
           const overtimeMs = exitTime - scheduledEnd;
           overtimeHours = overtimeMs / (1000 * 60 * 60);
           if (overtimeHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
-            overtimeFee = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing);
+            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
+            overtimeFee = overtimeCalc.fee;
+            surchargeLogs = overtimeCalc.surchargeLogs;
+            overtimeBlocks = overtimeCalc.overtimeBlocks;
             isOvertime = true;
           }
         }
@@ -344,6 +363,9 @@ class ParkingSessionService {
         session.vehicleType.pricing
       );
       fee = calculated.fee;
+      totalBlocks = calculated.totalBlocks;
+      dayBlocksCount = calculated.dayBlocksCount;
+      nightBlocksCount = calculated.nightBlocksCount;
     }
 
     const totalFee = fee + overtimeFee;
@@ -361,6 +383,12 @@ class ParkingSessionService {
     session.overtimeHours = overtimeHours;
     session.checkOutStaff = staffId;
     session.status = 'completed';
+    
+    // Set block tracking info
+    session.totalBlocks = totalBlocks + overtimeBlocks;
+    session.dayBlocksCount = dayBlocksCount;
+    session.nightBlocksCount = nightBlocksCount;
+    session.surchargeLogs = surchargeLogs;
 
     // If fully pre-paid, auto mark as paid
     if (feeToPay === 0 && session.advancePayment > 0) {

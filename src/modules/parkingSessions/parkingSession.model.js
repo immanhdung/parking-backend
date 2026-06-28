@@ -81,6 +81,18 @@ const parkingSessionSchema = new mongoose.Schema(
     // Overtime
     isOvertime: { type: Boolean, default: false },
     overtimeHours: { type: Number, default: 0 },
+    // Block-based tracking
+    totalBlocks: { type: Number, default: 0 },
+    dayBlocksCount: { type: Number, default: 0 },
+    nightBlocksCount: { type: Number, default: 0 },
+    surchargeLogs: [
+      {
+        type: { type: String }, // 'early', 'late', 'fallback'
+        timestamp: Date,
+        amount: Number,
+        label: String
+      }
+    ],
     overtimeNotificationSent: { type: Boolean, default: false },
     // Payment
     paymentStatus: {

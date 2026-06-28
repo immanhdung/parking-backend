@@ -56,11 +56,14 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
   const durationDays = Math.floor(durationHours / 24);
 
   if (durationMs <= 0) {
-    return { fee: 0, durationMs: 0, durationHours: 0, durationDays: 0 };
+    return { fee: 0, durationMs: 0, durationHours: 0, durationDays: 0, dayBlocksCount: 0, nightBlocksCount: 0, totalBlocks: 0, logs: [] };
   }
 
   let fee = 0;
   let currentStart = new Date(entryTime);
+  let dayBlocksCount = 0;
+  let nightBlocksCount = 0;
+  const logs = [];
 
   while (currentStart < exitTime) {
     // Determine the actual end of this block for fee calculation
@@ -82,11 +85,23 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
     // Nighttime rate from DB, fallback to dayBlockRate × 1.5
     const nightBlockRate = pricing.nightBlockRate || (baseBlockRate * 1.5);
 
+    let amountCharged = 0;
     if (isNightBlock) {
-      fee += nightBlockRate;
+      amountCharged = nightBlockRate;
+      fee += amountCharged;
+      nightBlocksCount++;
     } else {
-      fee += baseBlockRate;
+      amountCharged = baseBlockRate;
+      fee += amountCharged;
+      dayBlocksCount++;
     }
+
+    logs.push({
+      start: new Date(currentStart.getTime()),
+      end: new Date(blockEnd.getTime()),
+      isNightBlock,
+      amount: amountCharged
+    });
 
     // Advance by 1 block (4 hours)
     currentStart = new Date(currentStart.getTime() + 4 * 60 * 60 * 1000);
@@ -97,6 +112,10 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
     durationMs,
     durationHours: Math.round(durationHours * 100) / 100,
     durationDays,
+    dayBlocksCount,
+    nightBlocksCount,
+    totalBlocks: dayBlocksCount + nightBlocksCount,
+    logs,
   };
 };
 
@@ -106,13 +125,22 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
  * @param {Date} scheduledEnd - Booking scheduled end time
  * @param {Date} actualExit - Actual exit time
  * @param {Object} pricing - { dayBlockRate, nightBlockRate }
+ * @param {String} logType - Label for the log (e.g. 'late', 'early', 'fallback')
  */
-const calculateOvertimeFee = (scheduledEnd, actualExit, pricing) => {
-  if (actualExit <= scheduledEnd) return 0;
+const calculateOvertimeFee = (scheduledEnd, actualExit, pricing, logType = 'late') => {
+  if (actualExit <= scheduledEnd) return { fee: 0, surchargeLogs: [], overtimeBlocks: 0 };
 
   // Reuse the same block-based logic for the overtime period
-  const { fee } = calculateParkingFee(scheduledEnd, actualExit, pricing);
-  return fee;
+  const { fee, logs, totalBlocks } = calculateParkingFee(scheduledEnd, actualExit, pricing);
+  
+  const surchargeLogs = logs.map(log => ({
+    type: logType,
+    timestamp: log.start,
+    amount: log.amount,
+    label: logType === 'late' ? 'Late Departure Surcharge' : (logType === 'early' ? 'Early Arrival Surcharge' : 'Overtime Surcharge')
+  }));
+
+  return { fee, surchargeLogs, overtimeBlocks: totalBlocks };
 };
 
 /**

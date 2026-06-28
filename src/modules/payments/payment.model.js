@@ -40,6 +40,14 @@ const paymentSchema = new mongoose.Schema(
     },
     baseFee: { type: Number, default: 0 },
     overtimeFee: { type: Number, default: 0 },
+    surchargeLogs: [
+      {
+        type: { type: String },
+        timestamp: Date,
+        amount: Number,
+        label: String
+      }
+    ],
     discount: { type: Number, default: 0 },
     method: {
       type: String,
