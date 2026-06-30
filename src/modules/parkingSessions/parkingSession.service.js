@@ -190,14 +190,33 @@ class ParkingSessionService {
 
     const actualLicensePlate = (monthlyPass?.licensePlate || licensePlate || booking?.vehicleInfo?.licensePlate || '').toUpperCase();
 
+    // Prepare regex for license plate matching (ignore spaces, dashes, dots)
+    let plateRegex = null;
+    if (actualLicensePlate) {
+      const cleanScanned = actualLicensePlate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      if (cleanScanned) {
+        const regexStr = cleanScanned.split('').join('[-.\\s]*');
+        plateRegex = new RegExp(`^${regexStr}$`, 'i');
+      }
+    }
+
     // Check for active monthly pass by plate if not provided via QR code
-    if (!monthlyPass && actualLicensePlate) {
+    if (!monthlyPass && plateRegex) {
       monthlyPass = await MonthlyPass.findOne({
-        licensePlate: actualLicensePlate,
+        licensePlate: { $regex: plateRegex },
         status: 'active',
         startDate: { $lte: new Date() },
         endDate: { $gte: new Date() },
       });
+    }
+
+    // If no monthly pass, check if it's a registered vehicle to link the user
+    if (!monthlyPass && plateRegex && !userId) {
+      const Vehicle = require('../vehicles/vehicle.model');
+      const registeredVehicle = await Vehicle.findOne({ licensePlate: { $regex: plateRegex } });
+      if (registeredVehicle) {
+        userId = registeredVehicle.user;
+      }
     }
 
     // Prevent duplicate check-in
