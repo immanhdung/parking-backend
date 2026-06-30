@@ -320,6 +320,24 @@ class ParkingSessionService {
     ]);
   }
 
+  async updateLicensePlate(sessionId, newLicensePlate, staffId) {
+    const session = await ParkingSession.findById(sessionId);
+    if (!session) throw ApiError.notFound('Parking session not found');
+
+    if (session.status !== 'active') {
+      throw ApiError.badRequest('Only active sessions can be updated');
+    }
+
+    const oldPlate = session.vehicleInfo.licensePlate;
+    session.vehicleInfo.licensePlate = newLicensePlate;
+    
+    session.notes = (session.notes ? session.notes + '\n' : '') + 
+      `[${new Date().toISOString()}] Plate updated from ${oldPlate} to ${newLicensePlate} by staff exception handling`;
+
+    await session.save();
+    return session;
+  }
+
   /**
    * CHECK-OUT: End a parking session and calculate fee
    */

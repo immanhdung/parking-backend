@@ -41,6 +41,12 @@ class ParkingSessionController {
     const session = await parkingSessionService.addEvidenceImages(req.params.id, req.files, type);
     ApiResponse.success(res, 'Evidence images uploaded.', session.evidenceImages);
   });
+
+  updateLicensePlate = asyncHandler(async (req, res) => {
+    const { licensePlate } = req.body;
+    const session = await parkingSessionService.updateLicensePlate(req.params.id, licensePlate, req.user._id);
+    ApiResponse.success(res, 'License plate updated successfully.', session);
+  });
 }
 
 module.exports = new ParkingSessionController();

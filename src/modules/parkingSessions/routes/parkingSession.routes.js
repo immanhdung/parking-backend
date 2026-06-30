@@ -186,4 +186,31 @@ router.post(
   ctrl.addEvidence
 );
 
+/**
+ * @swagger
+ * /parking-sessions/{id}/license-plate:
+ *   patch:
+ *     summary: Update license plate of an active session (staff)
+ *     tags: [Parking Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [licensePlate]
+ *             properties:
+ *               licensePlate:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: License plate updated successfully
+ */
+router.patch('/:id/license-plate', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.updateLicensePlate);
+
 module.exports = router;
