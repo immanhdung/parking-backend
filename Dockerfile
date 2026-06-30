@@ -28,8 +28,9 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy source code
 COPY --chown=nodeuser:nodejs . .
 
-# Create logs directory
-RUN mkdir -p logs && chown nodeuser:nodejs logs
+# Create uploads/evidence & logs directories and change ownership
+RUN mkdir -p public/uploads/evidence logs && \
+    chown -R nodeuser:nodejs public logs
 
 # Switch to non-root user
 USER nodeuser
