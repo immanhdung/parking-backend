@@ -191,13 +191,38 @@ class ParkingSessionService {
     const actualLicensePlate = (monthlyPass?.licensePlate || licensePlate || booking?.vehicleInfo?.licensePlate || '').toUpperCase();
 
     // Check for active monthly pass by plate if not provided via QR code
-    if (!monthlyPass) {
+    if (!monthlyPass && actualLicensePlate) {
       monthlyPass = await MonthlyPass.findOne({
         licensePlate: actualLicensePlate,
         status: 'active',
         startDate: { $lte: new Date() },
         endDate: { $gte: new Date() },
       });
+    }
+
+    // Prevent duplicate check-in
+    if (actualLicensePlate) {
+      const cleanPlate = actualLicensePlate.replace(/[^a-zA-Z0-9]/g, '');
+      if (cleanPlate) {
+        const regexStr = cleanPlate.split('').join('[^a-zA-Z0-9]*');
+        const existingSession = await ParkingSession.findOne({
+          'vehicleInfo.licensePlate': { $regex: new RegExp(`^[^a-zA-Z0-9]*${regexStr}[^a-zA-Z0-9]*$`, 'i') },
+          status: 'active'
+        });
+        if (existingSession) {
+          throw ApiError.badRequest(`Vehicle ${actualLicensePlate} is already checked in (Session: ${existingSession.sessionCode}).`);
+        }
+      }
+    }
+
+    if (monthlyPass) {
+      const existingPassSession = await ParkingSession.findOne({
+        monthlyPass: monthlyPass._id,
+        status: 'active'
+      });
+      if (existingPassSession) {
+        throw ApiError.badRequest('This monthly pass is already in use by another active session.');
+      }
     }
 
     // Create parking session
