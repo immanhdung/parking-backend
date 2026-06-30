@@ -54,6 +54,7 @@ class LPRController {
     let isRegistered = false;
     let isMonthlyPass = false;
     let passDetails = null;
+    let predictedVehicleTypeId = null;
 
     if (result.licensePlate && result.licensePlate !== 'UNRECOGNIZED') {
       const normalizedScanned = result.licensePlate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
@@ -61,8 +62,10 @@ class LPRController {
       const plateRegex = new RegExp(`^${regexPattern}$`, 'i');
 
       const vehicle = await Vehicle.findOne({ licensePlate: { $regex: plateRegex } }).lean();
+      
       if (vehicle) {
         isRegistered = true;
+        predictedVehicleTypeId = vehicle.vehicleType;
       }
 
       const activePass = await MonthlyPass.findOne({
@@ -74,6 +77,44 @@ class LPRController {
       if (activePass) {
         isMonthlyPass = true;
         passDetails = activePass;
+        predictedVehicleTypeId = activePass.vehicleType;
+      }
+
+      // If not in DB, guess based on plate format
+      if (!predictedVehicleTypeId) {
+        const VehicleType = require('../vehicleTypes/vehicleType.model');
+        const types = await VehicleType.find({}).lean();
+        
+        let isMotorbike = false;
+        const cleanPlate = result.licensePlate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        
+        if (cleanPlate.length === 9 && !/^(LD|KT|NN|NG|DA|R)/.test(cleanPlate.substring(2))) {
+            // 9 chars is usually Motorbike (4 prefix + 5 suffix)
+            isMotorbike = true;
+        } else if (cleanPlate.length === 8) {
+            // 8 chars can be Car (3+5) or Motorbike (4+4)
+            // Check if 4th char is a letter (e.g. 29AA1234) -> Motorbike
+            if (/[A-Z]/.test(cleanPlate[3])) {
+                isMotorbike = true;
+            } else {
+                // Try to find if original string groups it as 4 chars
+                // e.g. 12-B1 1234 -> 12B1 1234
+                const groups = result.licensePlate.toUpperCase().split(/[-\s.]+/);
+                if (groups.length >= 2) {
+                    const prefix = groups[0] + (groups.length > 2 && groups[0].length === 2 ? groups[1] : '');
+                    if (prefix.length === 4) isMotorbike = true;
+                }
+            }
+        }
+        
+        const typeMatch = types.find(t => 
+           isMotorbike ? (t.code.includes('MOTOR') || t.code.includes('BIKE')) 
+                       : (t.code.includes('CAR') || t.code.includes('OTO'))
+        ) || types[0];
+        
+        if (typeMatch) {
+            predictedVehicleTypeId = typeMatch._id;
+        }
       }
     }
 
@@ -86,7 +127,8 @@ class LPRController {
       raw: result.raw,
       isRegistered,
       isMonthlyPass,
-      passDetails
+      passDetails,
+      predictedVehicleTypeId
     });
   });
 }
