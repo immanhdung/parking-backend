@@ -55,13 +55,14 @@ class LPRController {
     let isMonthlyPass = false;
     let passDetails = null;
     let predictedVehicleTypeId = null;
+    let customerName = null;
 
     if (result.licensePlate && result.licensePlate !== 'UNRECOGNIZED') {
       const normalizedScanned = result.licensePlate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
       const regexPattern = normalizedScanned.split('').join('[-.\\s]*');
       const plateRegex = new RegExp(`^${regexPattern}$`, 'i');
 
-      const vehicle = await Vehicle.findOne({ licensePlate: { $regex: plateRegex } }).lean();
+      const vehicle = await Vehicle.findOne({ licensePlate: { $regex: plateRegex } }).populate('user', 'fullName').lean();
       
       if (vehicle) {
         isRegistered = true;
@@ -72,7 +73,7 @@ class LPRController {
         licensePlate: { $regex: plateRegex },
         status: 'active',
         endDate: { $gte: new Date() }
-      }).lean();
+      }).populate('user', 'fullName').lean();
 
       if (activePass) {
         isMonthlyPass = true;
@@ -116,6 +117,12 @@ class LPRController {
             predictedVehicleTypeId = typeMatch._id;
         }
       }
+
+      if (activePass && activePass.user) {
+        customerName = activePass.user.fullName;
+      } else if (vehicle && vehicle.user) {
+        customerName = vehicle.user.fullName;
+      }
     }
 
     ApiResponse.success(res, 'License plate recognized.', {
@@ -128,7 +135,8 @@ class LPRController {
       isRegistered,
       isMonthlyPass,
       passDetails,
-      predictedVehicleTypeId
+      predictedVehicleTypeId,
+      customerName
     });
   });
 }
