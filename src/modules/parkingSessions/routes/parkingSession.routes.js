@@ -54,7 +54,7 @@ router.get('/', ctrl.getSessions);
  *       404:
  *         description: No active session found
  */
-router.get('/find-active', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.findActive);
+router.get('/find-active', restrictTo('system_admin', 'parking_manager', 'parking_staff', 'parking_user'), ctrl.findActive);
 
 /**
  * @swagger

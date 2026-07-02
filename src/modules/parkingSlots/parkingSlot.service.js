@@ -187,7 +187,16 @@ class ParkingSlotService {
   async getFloorSlotMap(floorId) {
     const slots = await ParkingSlot.find({ floor: floorId })
       .populate('vehicleType', 'name code icon color')
-      .populate('currentSession', 'vehicleInfo.licensePlate entryTime')
+      .populate({
+        path: 'currentSession',
+        select: 'vehicleInfo entryTime user monthlyPass status',
+        populate: { path: 'user', select: 'fullName phone' }
+      })
+      .populate({
+        path: 'currentBooking',
+        select: 'user vehicleInfo scheduledDate startTime endTime status bookingCode',
+        populate: { path: 'user', select: 'fullName phone' }
+      })
       .sort('slotCode');
 
     return slots;

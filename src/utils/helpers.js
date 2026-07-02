@@ -77,13 +77,13 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
     // 06:00 to 17:59 is daytime, 18:00 to 05:59 is nighttime
     const isStartNight = startHour >= 18 || startHour < 6;
     const isEndNight = endHour >= 18 || endHour < 6;
-    
+
     // If any part of the block's actual duration is in the nighttime, charge as night block
     const isNightBlock = isStartNight || isEndNight;
 
-    const baseBlockRate = pricing.dayBlockRate;
+    const baseBlockRate = pricing?.dayBlockRate || 20000;
     // Nighttime rate from DB, fallback to dayBlockRate × 1.5
-    const nightBlockRate = pricing.nightBlockRate || (baseBlockRate * 1.5);
+    const nightBlockRate = pricing?.nightBlockRate || (baseBlockRate * 1.5);
 
     let amountCharged = 0;
     if (isNightBlock) {
@@ -132,7 +132,7 @@ const calculateOvertimeFee = (scheduledEnd, actualExit, pricing, logType = 'late
 
   // Reuse the same block-based logic for the overtime period
   const { fee, logs, totalBlocks } = calculateParkingFee(scheduledEnd, actualExit, pricing);
-  
+
   const surchargeLogs = logs.map(log => ({
     type: logType,
     timestamp: log.start,

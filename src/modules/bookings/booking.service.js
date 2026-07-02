@@ -84,7 +84,7 @@ class BookingService {
   }
 
   async create(data, userId) {
-    const { parkingLot, vehicleType, scheduledDate, startTime, endTime, vehicleInfo, vehicleId, floorId, zoneId, notes } = data;
+    const { parkingLot, vehicleType, scheduledDate, startTime, endTime, vehicleInfo, vehicleId, floorId, zoneId, notes, assignedSlot } = data;
 
     // Validate parking lot
     const lot = await ParkingLot.findById(parkingLot);
@@ -120,12 +120,12 @@ class BookingService {
     // Calculate estimated duration
     const [startH, startM] = startTime.split(':').map(Number);
     let [endH, endM] = endTime.split(':').map(Number);
-    
+
     // Handle cross-midnight bookings
     if (endH < startH || (endH === startH && endM < startM)) {
       endH += 24;
     }
-    
+
     const durationHours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
 
     if (durationHours <= 0) {
@@ -168,7 +168,7 @@ class BookingService {
           ebEndH += 24;
         }
         const ebDuration = (ebEndH * 60 + ebEndM - (ebStartH * 60 + ebStartM)) / 60;
-        
+
         const ebEntryTime = new Date(eb.scheduledDate);
         ebEntryTime.setHours(ebStartH, ebStartM, 0, 0);
         const ebExitTime = new Date(ebEntryTime.getTime() + ebDuration * 60 * 60 * 1000);
@@ -197,21 +197,34 @@ class BookingService {
     let finalStartTime = `${String(finalEntryTime.getHours()).padStart(2, '0')}:${String(finalEntryTime.getMinutes()).padStart(2, '0')}`;
     let finalEndTime = `${String(finalExitTime.getHours()).padStart(2, '0')}:${String(finalExitTime.getMinutes()).padStart(2, '0')}`;
 
-    // Find optimal available slot (AI suggestion)
-    const filter = {
-      parkingLot,
-      vehicleType: resolvedVehicleType,
-      status: 'available',
-    };
-    if (floorId) filter.floor = floorId;
-    if (zoneId) filter.zone = zoneId;
+    let recommendedSlot = null;
 
-    const availableSlots = await ParkingSlot.find(filter)
-      .populate('floor', 'floorNumber')
-      .populate('zone', 'name')
-      .limit(20);
+    if (assignedSlot) {
+      recommendedSlot = await ParkingSlot.findById(assignedSlot).populate('floor', 'floorNumber').populate('zone', 'name');
+      if (!recommendedSlot || recommendedSlot.status !== 'available') {
+        throw ApiError.badRequest('The selected slot is no longer available. Please select another slot.');
+      }
+      // Check if locked by someone else
+      if (recommendedSlot.lockedBy && recommendedSlot.lockedBy.toString() !== userId.toString() && recommendedSlot.lockedUntil && new Date(recommendedSlot.lockedUntil) > new Date()) {
+         throw ApiError.badRequest('The selected slot is currently being locked by another user.');
+      }
+    } else {
+      // Find optimal available slot (AI suggestion)
+      const filter = {
+        parkingLot,
+        vehicleType: resolvedVehicleType,
+        status: 'available',
+      };
+      if (floorId) filter.floor = floorId;
+      if (zoneId) filter.zone = zoneId;
 
-    const recommendedSlot = suggestOptimalSlot(availableSlots, vType);
+      const availableSlots = await ParkingSlot.find(filter)
+        .populate('floor', 'floorNumber')
+        .populate('zone', 'name')
+        .limit(20);
+
+      recommendedSlot = suggestOptimalSlot(availableSlots, vType);
+    }
 
     // Estimate fee using standardized block logic
     const { fee: estimatedFee } = calculateParkingFee(finalEntryTime, finalExitTime, vType.pricing);
