@@ -26,6 +26,7 @@ const routes = require('./routes/index');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { startOverdueWorker, stopOverdueWorker } = require('./workers/overdueSessionWorker');
+const { startPendingPassWorker, stopPendingPassWorker } = require('./workers/pendingPassWorker');
 
 // ========================
 // APP SETUP
@@ -198,6 +199,7 @@ const startServer = async () => {
     // BACKGROUND WORKERS
     // ========================
     startOverdueWorker(); // Scan overdue sessions every 60s & push real-time alerts
+    startPendingPassWorker(); // Auto-cancel unpaid monthly passes after 5 min
   } catch (error) {
     logger.error(`Failed to start server: ${error.message}`);
     process.exit(1);
@@ -222,6 +224,7 @@ process.on('uncaughtException', (err) => {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received. Shutting down gracefully...');
   stopOverdueWorker();
+  stopPendingPassWorker();
   httpServer.close(() => {
     logger.info('Process terminated');
     process.exit(0);
@@ -231,6 +234,7 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   logger.info('SIGINT received. Shutting down gracefully...');
   stopOverdueWorker();
+  stopPendingPassWorker();
   httpServer.close(() => {
     logger.info('Server closed');
     process.exit(0);

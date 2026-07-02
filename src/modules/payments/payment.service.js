@@ -250,7 +250,7 @@ class PaymentService {
     const bankId = process.env.SEPAY_BANK_ID || 'MB'; // 'MB' is the standard short name
     const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
     const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
-    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
 
     // Create pending bank_transfer payment
     const payment = await Payment.create({
@@ -309,7 +309,7 @@ class PaymentService {
     const bankId = process.env.SEPAY_BANK_ID || 'MB';
     const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
     const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
-    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
 
     const payment = await Payment.create({
       booking: bookingId,
@@ -329,7 +329,7 @@ class PaymentService {
       payment,
       transferContent,
       amount,
-      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME },
+      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING' },
       qrUrl,
     };
   }
@@ -371,7 +371,7 @@ class PaymentService {
     const bankId = process.env.SEPAY_BANK_ID || 'MB';
     const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
     const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
-    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
 
     const payment = await Payment.create({
       monthlyPass: monthlyPassId,
@@ -391,7 +391,7 @@ class PaymentService {
       payment,
       transferContent,
       amount,
-      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME },
+      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING' },
       qrUrl,
     };
   }
