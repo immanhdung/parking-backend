@@ -141,9 +141,10 @@ class BookingService {
     let finalExitTime = new Date(exitTime);
 
     if (resolvedVehicleInfo && resolvedVehicleInfo.licensePlate) {
-      // Check if the vehicle has an active monthly pass for this parking lot during the selected time
+      // Check if THIS USER has an active monthly pass for this vehicle at this parking lot
       const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
       const activePass = await MonthlyPass.findOne({
+        user: userId,
         licensePlate: resolvedVehicleInfo.licensePlate.toUpperCase(),
         parkingLot: parkingLot,
         status: 'active',
