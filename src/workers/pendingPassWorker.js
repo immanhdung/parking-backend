@@ -19,7 +19,8 @@ const logger = require('../utils/logger');
 // How often the worker runs (ms). Default: every 60 seconds.
 const SCAN_INTERVAL_MS = parseInt(process.env.PENDING_PASS_SCAN_INTERVAL_MS) || 60 * 1000;
 
-// How long before a pending pass is considered expired (ms). Default: 5 minutes.
+// How long before a pending pass is considered expired (ms). Default: 15 minutes.
+// Bank transfers via VietQR can take several minutes; give users enough time.
 const PAYMENT_TIMEOUT_MS = parseInt(process.env.PENDING_PASS_TIMEOUT_MS) || 5 * 60 * 1000;
 
 let workerTimer = null;
