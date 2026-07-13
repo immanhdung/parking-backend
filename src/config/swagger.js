@@ -31,7 +31,7 @@ Sử dụng Bearer Token (JWT) để xác thực.
         description: 'Development Server',
       },
       {
-        url: 'parking-backend-production-1353.up.railway.app',
+        url: 'https://parking-backend-production-1353.up.railway.app/api/v1',
         description: 'Production Server',
       },
     ],
