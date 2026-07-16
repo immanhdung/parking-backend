@@ -452,9 +452,25 @@ class ParkingSessionService {
     session.nightBlocksCount = nightBlocksCount;
     session.surchargeLogs = surchargeLogs;
 
-    // If fully pre-paid, auto mark as paid
+    // Handle payment recording
     if (feeToPay === 0 && session.advancePayment > 0) {
       session.paymentStatus = 'paid';
+    } else if (feeToPay > 0) {
+      // Auto-record cash payment when staff manually checks out the vehicle
+      const payment = await Payment.create({
+        parkingSession: session._id,
+        user: session.user,
+        parkingLot: session.parkingLot,
+        amount: feeToPay,
+        baseFee: fee,
+        overtimeFee: overtimeFee,
+        paymentType: 'session_checkout',
+        method: 'cash',
+        status: 'completed',
+        paidAt: new Date(),
+      });
+      session.paymentStatus = 'paid';
+      session.payment = payment._id;
     }
 
     await session.save();

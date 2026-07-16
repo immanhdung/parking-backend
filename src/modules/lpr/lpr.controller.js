@@ -4,24 +4,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const Vehicle = require('../vehicles/vehicle.model');
 const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
 
-(async () => {
-  try {
-    const fs = require('fs');
-    const plateRegex = new RegExp(`^5[-.\\s]*1[-.\\s]*F[-.\\s]*9[-.\\s]*7[-.\\s]*0[-.\\s]*2[-.\\s]*2$`, 'i');
-    const v = await Vehicle.findOne({ licensePlate: { $regex: plateRegex } }).lean();
-    const m = await MonthlyPass.findOne({ licensePlate: { $regex: plateRegex } }).lean();
-    const v2 = await Vehicle.findOne({ licensePlate: '51F-97022' }).lean();
-    
-    fs.writeFileSync(require('path').join(__dirname, 'test-output.txt'), JSON.stringify({
-      foundVehicleRegex: !!v,
-      foundPassRegex: !!m,
-      foundVehicleExact: !!v2,
-      vehicleObj: v
-    }, null, 2));
-  } catch(err) {
-    console.error(err);
-  }
-})();
+
 
 class LPRController {
   /**
