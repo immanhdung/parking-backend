@@ -39,7 +39,11 @@ class ReportService {
           $match: {
             ...filter,
             status: 'completed',
-            paidAt: { $gte: today.start, $lte: today.end },
+            $or: [
+              { paidAt: { $gte: today.start, $lte: today.end } },
+              { paidAt: { $exists: false }, createdAt: { $gte: today.start, $lte: today.end } },
+              { paidAt: null, createdAt: { $gte: today.start, $lte: today.end } },
+            ],
           },
         },
         { $group: { _id: null, total: { $sum: '$amount' } } },
@@ -80,7 +84,11 @@ class ReportService {
 
     const match = {
       status: 'completed',
-      paidAt: { $gte: start, $lte: end },
+      $or: [
+        { paidAt: { $gte: start, $lte: end } },
+        { paidAt: { $exists: false }, createdAt: { $gte: start, $lte: end } },
+        { paidAt: null, createdAt: { $gte: start, $lte: end } },
+      ],
     };
 
     if (user.role === 'parking_manager') {
@@ -89,22 +97,32 @@ class ReportService {
       match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
 
+    // Use $addFields to normalize date field: prefer paidAt, fallback to createdAt
+    const dateField = { $ifNull: ['$paidAt', '$createdAt'] };
+
     let dateGroup;
     if (groupBy === 'hour') {
-      dateGroup = { year: { $year: '$paidAt' }, month: { $month: '$paidAt' }, day: { $dayOfMonth: '$paidAt' }, hour: { $hour: '$paidAt' } };
+      dateGroup = { year: { $year: dateField }, month: { $month: dateField }, day: { $dayOfMonth: dateField }, hour: { $hour: dateField } };
     } else if (groupBy === 'day') {
-      dateGroup = { year: { $year: '$paidAt' }, month: { $month: '$paidAt' }, day: { $dayOfMonth: '$paidAt' } };
+      dateGroup = { year: { $year: dateField }, month: { $month: dateField }, day: { $dayOfMonth: dateField } };
     } else if (groupBy === 'month') {
-      dateGroup = { year: { $year: '$paidAt' }, month: { $month: '$paidAt' } };
+      dateGroup = { year: { $year: dateField }, month: { $month: dateField } };
     } else {
-      dateGroup = { year: { $year: '$paidAt' } };
+      dateGroup = { year: { $year: dateField } };
     }
 
     const revenue = await Payment.aggregate([
       { $match: match },
+      { $addFields: { _dateRef: dateField } },
       {
         $group: {
-          _id: dateGroup,
+          _id: groupBy === 'hour'
+            ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' }, day: { $dayOfMonth: '$_dateRef' }, hour: { $hour: '$_dateRef' } }
+            : groupBy === 'day'
+            ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' }, day: { $dayOfMonth: '$_dateRef' } }
+            : groupBy === 'month'
+            ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' } }
+            : { year: { $year: '$_dateRef' } },
           totalRevenue: { $sum: '$amount' },
           count: { $sum: 1 },
           avgRevenue: { $avg: '$amount' },
@@ -125,8 +143,24 @@ class ReportService {
       },
     ]);
 
+    // Revenue by payment type: booking vs monthly_pass vs session_checkout
+    const byPaymentType = await Payment.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $ifNull: ['$paymentType', 'session_checkout'] },
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
     const totalRevenue = revenue.reduce((sum, r) => sum + r.totalRevenue, 0);
     const totalTransactions = revenue.reduce((sum, r) => sum + r.count, 0);
+
+    // Helper: extract type total
+    const typeTotal = (type) => byPaymentType.find(t => t._id === type)?.total || 0;
+    const typeCount = (type) => byPaymentType.find(t => t._id === type)?.count || 0;
 
     return {
       period,
@@ -135,8 +169,15 @@ class ReportService {
       totalRevenue,
       totalTransactions,
       avgPerTransaction: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
+      bookingRevenue: typeTotal('booking'),
+      bookingCount: typeCount('booking'),
+      monthlyPassRevenue: typeTotal('monthly_pass'),
+      monthlyPassCount: typeCount('monthly_pass'),
+      sessionRevenue: typeTotal('session_checkout'),
+      sessionCount: typeCount('session_checkout'),
       chart: revenue,
       byMethod,
+      byPaymentType,
     };
   }
 

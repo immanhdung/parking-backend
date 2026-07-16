@@ -7,14 +7,19 @@ const Pagination = require('../../utils/pagination');
 
 class PaymentService {
   async getPayments(query, user) {
-    const { page = 1, limit = 10, sort = '-createdAt', status, method, parkingLot, startDate, endDate } = query;
+    const { page = 1, limit = 10, sort = '-createdAt', status, method, paymentType, parkingLot, startDate, endDate } = query;
 
     const filter = {};
     if (status) filter.status = status;
     if (method) filter.method = method;
+    if (paymentType) filter.paymentType = paymentType;
 
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      filter.parkingLot = user.assignedParkingLot;
+      if (user.assignedParkingLot) {
+        filter.parkingLot = user.assignedParkingLot;
+      } else if (parkingLot) {
+        filter.parkingLot = parkingLot;
+      }
     } else if (parkingLot) {
       filter.parkingLot = parkingLot;
     }
@@ -28,6 +33,7 @@ class PaymentService {
       if (startDate) filter.createdAt.$gte = new Date(startDate);
       if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
+    console.log('GET PAYMENTS QUERY:', filter, 'UserRole:', user.role, 'AssignedLot:', user.assignedParkingLot);
 
     return Pagination.paginate(Payment, filter, {
       page: parseInt(page),
