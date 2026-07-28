@@ -88,6 +88,36 @@ router.post('/login', loginValidator, validate, authController.login);
 
 /**
  * @swagger
+ * /auth/google:
+ *   post:
+ *     summary: Login with Google
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: eyJhbGci...
+ *     responses:
+ *       200:
+ *         description: Google login successful
+ *       400:
+ *         description: Missing token
+ *       401:
+ *         description: Invalid Google token
+ *       403:
+ *         description: Account blocked or not verified
+ */
+router.post('/google', authController.googleLogin);
+
+/**
+ * @swagger
  * /auth/logout:
  *   post:
  *     summary: Logout and invalidate refresh token
