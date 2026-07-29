@@ -403,10 +403,18 @@ class ParkingSessionService {
       fee = session.booking.estimatedFee || 0; // Base fee is the booking fee
 
       if (session.booking.endTime && session.booking.startTime && session.booking.scheduledDate) {
-        const scheduledStartStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.startTime}:00`;
-        const scheduledStart = new Date(scheduledStartStr);
-        const scheduledEndStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.endTime}:00`;
-        const scheduledEnd = new Date(scheduledEndStr);
+        const dStr = session.booking.scheduledDate;
+        const [startH, startM] = session.booking.startTime.split(':').map(Number);
+        const scheduledStart = new Date(dStr);
+        scheduledStart.setHours(startH, startM, 0, 0);
+
+        const [endH, endM] = session.booking.endTime.split(':').map(Number);
+        const scheduledEnd = new Date(dStr);
+        scheduledEnd.setHours(endH, endM, 0, 0);
+        
+        if (scheduledEnd < scheduledStart) {
+          scheduledEnd.setDate(scheduledEnd.getDate() + 1);
+        }
 
         // Early Arrival Fee (if they enter before the scheduled start time)
         if (session.entryTime < scheduledStart) {
