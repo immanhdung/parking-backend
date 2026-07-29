@@ -68,7 +68,7 @@ class ParkingSessionService {
       .populate('zone', 'name code')
       .populate('slot', 'slotCode position features')
       .populate('vehicleType', 'name code pricing')
-      .populate('booking', 'bookingCode')
+      .populate('booking', 'bookingCode startTime endTime scheduledDate estimatedFee')
       .populate('payment')
       .populate('checkInStaff', 'fullName')
       .populate('checkOutStaff', 'fullName');
@@ -345,7 +345,7 @@ class ParkingSessionService {
     const session = await ParkingSession.findById(sessionId)
       .populate('vehicleType')
       .populate('slot')
-      .populate('booking', 'endTime scheduledDate estimatedFee')
+      .populate('booking', 'startTime endTime scheduledDate estimatedFee')
       .populate('monthlyPass');
 
     if (!session) throw ApiError.notFound('Session not found.');
@@ -402,17 +402,36 @@ class ParkingSessionService {
     } else if (session.booking) {
       fee = session.booking.estimatedFee || 0; // Base fee is the booking fee
 
-      if (session.booking.endTime && session.booking.scheduledDate) {
+      if (session.booking.endTime && session.booking.startTime && session.booking.scheduledDate) {
+        const scheduledStartStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.startTime}:00`;
+        const scheduledStart = new Date(scheduledStartStr);
         const scheduledEndStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.endTime}:00`;
         const scheduledEnd = new Date(scheduledEndStr);
+
+        // Early Arrival Fee (if they enter before the scheduled start time)
+        if (session.entryTime < scheduledStart) {
+          const earlyMs = scheduledStart - session.entryTime;
+          const earlyHours = earlyMs / (1000 * 60 * 60);
+          // Grace period check (default to 15 mins)
+          if (earlyHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
+            const earlyCalc = calculateOvertimeFee(session.entryTime, scheduledStart, session.vehicleType.pricing, 'early');
+            overtimeFee += earlyCalc.fee;
+            surchargeLogs = surchargeLogs.concat(earlyCalc.surchargeLogs);
+            overtimeBlocks += earlyCalc.overtimeBlocks;
+            isOvertime = true;
+          }
+        }
+
+        // Late Departure / Overtime Fee (if they exit after the scheduled end time)
         if (exitTime > scheduledEnd) {
           const overtimeMs = exitTime - scheduledEnd;
-          overtimeHours = overtimeMs / (1000 * 60 * 60);
-          if (overtimeHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
+          const lateHours = overtimeMs / (1000 * 60 * 60);
+          overtimeHours = lateHours;
+          if (lateHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
             const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
-            overtimeFee = overtimeCalc.fee;
-            surchargeLogs = overtimeCalc.surchargeLogs;
-            overtimeBlocks = overtimeCalc.overtimeBlocks;
+            overtimeFee += overtimeCalc.fee;
+            surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
+            overtimeBlocks += overtimeCalc.overtimeBlocks;
             isOvertime = true;
           }
         }
@@ -539,7 +558,7 @@ class ParkingSessionService {
       .populate('floor', 'name floorNumber')
       .populate('zone', 'name code')
       .populate('vehicleType', 'name pricing')
-      .populate('booking', 'bookingCode');
+      .populate('booking', 'bookingCode startTime endTime scheduledDate estimatedFee');
 
     if (!session) throw ApiError.notFound('No active session found.');
     return session;
