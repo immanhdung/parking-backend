@@ -19,9 +19,6 @@ class ParkingLotController {
   });
 
   update = asyncHandler(async (req, res) => {
-    if (req.body.manager !== undefined) {
-      delete req.body.manager;
-    }
     const lot = await parkingLotService.update(req.params.id, req.body);
     ApiResponse.success(res, 'Parking lot updated.', lot);
   });
