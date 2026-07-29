@@ -4,6 +4,11 @@ const User = require('../users/user.model');
 const ApiError = require('../../utils/ApiError');
 const { sendVerificationEmail, sendResetPasswordEmail } = require('../../utils/email');
 const logger = require('../../utils/logger');
+const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 class AuthService {
   /**
@@ -97,6 +102,80 @@ class AuthService {
     });
 
     // Keep max 5 refresh tokens per user
+    if (user.refreshTokens.length > 5) {
+      user.refreshTokens = user.refreshTokens.slice(-5);
+    }
+
+    user.lastLogin = new Date();
+    user.loginCount = (user.loginCount || 0) + 1;
+    await user.save({ validateBeforeSave: false });
+
+    return { user, accessToken, refreshToken };
+  }
+
+  /**
+   * Google Login
+   */
+  async googleLogin(token, deviceInfo = '') {
+    let payload;
+    try {
+      const response = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      payload = response.data;
+    } catch (error) {
+      logger.error('Google token verification failed:', error.message);
+      throw ApiError.unauthorized('Invalid Google token.');
+    }
+
+    const { email, name, picture, email_verified } = payload;
+
+    if (!email_verified) {
+      throw ApiError.badRequest('Google email is not verified.');
+    }
+
+    let user = await User.findOne({ email }).select('+password');
+
+    if (!user) {
+      user = await User.create({
+        fullName: name,
+        email: email,
+        password: crypto.randomBytes(16).toString('hex') + 'A1!', // Ensure it meets validation
+        role: 'parking_user',
+        status: 'active',
+        isEmailVerified: true,
+        avatar: { url: picture, publicId: '' }
+      });
+    } else {
+      if (user.status === 'blocked') {
+        throw ApiError.forbidden('Your account has been blocked. Please contact support.');
+      }
+      if (user.status === 'inactive') {
+        throw ApiError.forbidden('Your account is inactive. Please contact support.');
+      }
+      if (user.status === 'pending') {
+        user.status = 'active';
+        user.isEmailVerified = true;
+      }
+      
+      // Update avatar if not present
+      if (!user.avatar?.url && picture) {
+        user.avatar = { url: picture, publicId: '' };
+      }
+    }
+
+    const accessToken = this.generateAccessToken(user._id, user.role);
+    const refreshToken = this.generateRefreshToken(user._id);
+
+    const refreshExpiry = new Date();
+    refreshExpiry.setDate(refreshExpiry.getDate() + 7);
+
+    user.refreshTokens.push({
+      token: refreshToken,
+      expiresAt: refreshExpiry,
+      deviceInfo,
+    });
+
     if (user.refreshTokens.length > 5) {
       user.refreshTokens = user.refreshTokens.slice(-5);
     }

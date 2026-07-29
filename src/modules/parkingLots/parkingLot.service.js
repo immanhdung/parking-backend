@@ -98,6 +98,11 @@ class ParkingLotService {
       }
       // Set new manager's assigned lot
       if (data.manager) {
+        // If this manager was assigned to another lot, clear that lot's manager field
+        const newManagerUser = await User.findById(data.manager);
+        if (newManagerUser && newManagerUser.assignedParkingLot && newManagerUser.assignedParkingLot.toString() !== id) {
+          await ParkingLot.findByIdAndUpdate(newManagerUser.assignedParkingLot, { manager: null });
+        }
         await User.findByIdAndUpdate(data.manager, { assignedParkingLot: id });
       }
     }
@@ -153,9 +158,9 @@ class ParkingLotService {
     const User = require('../users/user.model');
     const staff = await User.find({
       _id: { $in: lot.staff },
-      role: 'parking_staff',
+      role: { $in: ['parking_staff', 'parking_manager'] },
     })
-      .select('fullName email phone avatar status createdAt')
+      .select('fullName email phone avatar status role createdAt')
       .sort({ fullName: 1 });
 
     return staff;
@@ -173,8 +178,8 @@ class ParkingLotService {
     // Validate staff user
     const staffUser = await User.findById(staffId);
     if (!staffUser) throw ApiError.notFound('Staff user not found.');
-    if (staffUser.role !== 'parking_staff') {
-      throw ApiError.badRequest('User is not a parking staff member.');
+    if (!['parking_staff', 'parking_manager'].includes(staffUser.role)) {
+      throw ApiError.badRequest('User must be a staff or a manager.');
     }
 
     // Check if already assigned to another lot
@@ -245,7 +250,7 @@ class ParkingLotService {
     const { search } = query || {};
 
     const filter = {
-      role: 'parking_staff',
+      role: { $in: ['parking_staff', 'parking_manager'] },
       $or: [
         { assignedParkingLot: null },
         { assignedParkingLot: { $exists: false } },

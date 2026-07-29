@@ -13,7 +13,11 @@ class ReportService {
   async getDashboardStats(parkingLotId, user) {
     const filter = {};
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      filter.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+      if (user.assignedParkingLot) {
+        filter.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+      } else {
+        filter.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
     } else if (parkingLotId) {
       filter.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
@@ -91,8 +95,12 @@ class ReportService {
       ],
     };
 
-    if (user.role === 'parking_manager') {
-      match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      if (user.assignedParkingLot) {
+        match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+      } else {
+        match.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
     } else if (parkingLotId) {
       match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
@@ -119,10 +127,10 @@ class ReportService {
           _id: groupBy === 'hour'
             ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' }, day: { $dayOfMonth: '$_dateRef' }, hour: { $hour: '$_dateRef' } }
             : groupBy === 'day'
-            ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' }, day: { $dayOfMonth: '$_dateRef' } }
-            : groupBy === 'month'
-            ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' } }
-            : { year: { $year: '$_dateRef' } },
+              ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' }, day: { $dayOfMonth: '$_dateRef' } }
+              : groupBy === 'month'
+                ? { year: { $year: '$_dateRef' }, month: { $month: '$_dateRef' } }
+                : { year: { $year: '$_dateRef' } },
           totalRevenue: { $sum: '$amount' },
           count: { $sum: 1 },
           avgRevenue: { $avg: '$amount' },
@@ -193,8 +201,12 @@ class ReportService {
       status: 'completed',
     };
 
-    if (user.role === 'parking_manager') {
-      match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      if (user.assignedParkingLot) {
+        match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+      } else {
+        match.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
     } else if (parkingLotId) {
       match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
@@ -280,15 +292,22 @@ class ReportService {
    * Occupancy rate report
    */
   async getOccupancyReport(parkingLotId, user) {
-    const lotId = user.role === 'parking_manager' ? user.assignedParkingLot : parkingLotId;
+    let lotId = parkingLotId;
+    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      if (user.assignedParkingLot) {
+        lotId = user.assignedParkingLot;
+      } else {
+        lotId = '000000000000000000000000';
+      }
+    }
+
+    const matchStage = { isDeleted: { $ne: true } };
+    if (lotId) {
+      matchStage.parkingLot = new mongoose.Types.ObjectId(lotId);
+    }
 
     const slotStats = await ParkingSlot.aggregate([
-      {
-        $match: {
-          parkingLot: new mongoose.Types.ObjectId(lotId),
-          isDeleted: { $ne: true },
-        },
-      },
+      { $match: matchStage },
       {
         $group: {
           _id: { vehicleType: '$vehicleType', status: '$status' },
@@ -321,8 +340,12 @@ class ReportService {
       entryTime: { $gte: start, $lte: end },
     };
 
-    if (user.role === 'parking_manager') {
-      filter.parkingLot = user.assignedParkingLot;
+    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      if (user.assignedParkingLot) {
+        filter.parkingLot = user.assignedParkingLot;
+      } else {
+        filter.parkingLot = '000000000000000000000000';
+      }
     } else if (parkingLotId) {
       filter.parkingLot = parkingLotId;
     }

@@ -51,6 +51,42 @@ class AuthController {
   });
 
   /**
+   * POST /auth/google
+   */
+  googleLogin = asyncHandler(async (req, res) => {
+    const { token } = req.body;
+    const deviceInfo = req.headers['user-agent'] || '';
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Google token required.' });
+    }
+
+    const { user, accessToken, refreshToken } = await authService.googleLogin(token, deviceInfo);
+
+    // Set refresh token as httpOnly cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    ApiResponse.success(res, 'Google login successful.', {
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatarUrl,
+        isEmailVerified: user.isEmailVerified,
+        assignedParkingLot: user.assignedParkingLot,
+      },
+      accessToken,
+      refreshToken,
+    });
+  });
+
+  /**
    * POST /auth/logout
    */
   logout = asyncHandler(async (req, res) => {

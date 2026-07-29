@@ -62,7 +62,7 @@ router.use(protect);
  *         description: Code already exists
  */
 router.get('/', ctrl.getAll);
-router.post('/', restrictTo('parking_manager'), ctrl.create);
+router.post('/', restrictTo('parking_manager', 'system_admin'), ctrl.create);
 
 /**
  * @swagger
@@ -79,7 +79,7 @@ router.post('/', restrictTo('parking_manager'), ctrl.create);
  *       200:
  *         description: List of available staff
  */
-router.get('/available-staff', restrictTo('parking_manager'), ctrl.getAvailableStaff);
+router.get('/available-staff', restrictTo('parking_manager', 'system_admin'), ctrl.getAvailableStaff);
 
 /**
  * @swagger
@@ -164,8 +164,8 @@ router.get('/:id/slots-summary', ctrl.getSlotsSummary);
  *       409:
  *         description: Staff already assigned
  */
-router.get('/:id/staff', restrictTo('parking_manager'), ctrl.getStaff);
-router.post('/:id/staff', restrictTo('parking_manager'), ctrl.assignStaff);
+router.get('/:id/staff', restrictTo('parking_manager', 'system_admin'), ctrl.getStaff);
+router.post('/:id/staff', restrictTo('parking_manager', 'system_admin'), ctrl.assignStaff);
 
 /**
  * @swagger
@@ -190,6 +190,6 @@ router.post('/:id/staff', restrictTo('parking_manager'), ctrl.assignStaff);
  *       404:
  *         description: Staff not found in this lot
  */
-router.delete('/:id/staff/:staffId', restrictTo('parking_manager'), ctrl.removeStaff);
+router.delete('/:id/staff/:staffId', restrictTo('parking_manager', 'system_admin'), ctrl.removeStaff);
 
 module.exports = router;
