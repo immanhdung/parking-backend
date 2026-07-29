@@ -15,11 +15,11 @@ class MonthlyPassService {
       throw ApiError.badRequest('This vehicle type does not support monthly passes.');
     }
 
-    // Find the latest active or pending pass for this vehicle in the SAME parking lot
+    // Find the latest active pass for this vehicle in the SAME parking lot
     const existingPass = await MonthlyPass.findOne({
       licensePlate: licensePlate.toUpperCase(),
       parkingLot: parkingLotId,
-      status: { $in: ['pending', 'active'] },
+      status: 'active',
       endDate: { $gte: new Date() },
     }).sort({ endDate: -1 });
 
