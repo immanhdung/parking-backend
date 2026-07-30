@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../parkingSlot.controller');
-const { protect, restrictTo } = require('../../../middleware/auth');
-
-router.use(protect);
+const { protect, restrictTo, optionalAuth } = require('../../../middleware/auth');
 
 /**
  * @swagger
@@ -58,9 +56,9 @@ router.use(protect);
  *       201:
  *         description: Slot created
  */
-router.get('/', ctrl.getSlots);
-router.post('/', restrictTo('system_admin', 'parking_manager'), ctrl.create);
-router.post('/bulk', restrictTo('system_admin', 'parking_manager'), ctrl.bulkCreate);
+router.get('/', optionalAuth, ctrl.getSlots);
+router.post('/', protect, restrictTo('system_admin', 'parking_manager'), ctrl.create);
+router.post('/bulk', protect, restrictTo('system_admin', 'parking_manager'), ctrl.bulkCreate);
 
 /**
  * @swagger
@@ -87,7 +85,7 @@ router.post('/bulk', restrictTo('system_admin', 'parking_manager'), ctrl.bulkCre
  *       200:
  *         description: Available slots with recommended slot
  */
-router.get('/available', ctrl.findAvailable);
+router.get('/available', optionalAuth, ctrl.findAvailable);
 
 /**
  * @swagger
@@ -104,8 +102,8 @@ router.get('/available', ctrl.findAvailable);
  *       200:
  *         description: Floor slot map
  */
-router.get('/floor-map/:floorId', ctrl.getFloorMap);
-router.get('/occupancy/:parkingLotId', ctrl.getOccupancyByVehicleType);
+router.get('/floor-map/:floorId', optionalAuth, ctrl.getFloorMap);
+router.get('/occupancy/:parkingLotId', optionalAuth, ctrl.getOccupancyByVehicleType);
 
 /**
  * @swagger
@@ -144,9 +142,9 @@ router.get('/occupancy/:parkingLotId', ctrl.getOccupancyByVehicleType);
  *       200:
  *         description: Slot deleted
  */
-router.get('/:id', ctrl.getById);
-router.put('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.update);
-router.delete('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.delete);
+router.get('/:id', optionalAuth, ctrl.getById);
+router.put('/:id', protect, restrictTo('system_admin', 'parking_manager'), ctrl.update);
+router.delete('/:id', protect, restrictTo('system_admin', 'parking_manager'), ctrl.delete);
 
 /**
  * @swagger
@@ -176,7 +174,7 @@ router.delete('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.delete
  *       200:
  *         description: Status updated and emitted via Socket.IO
  */
-router.patch('/:id/status', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.updateStatus);
+router.patch('/:id/status', protect, restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.updateStatus);
 
 /**
  * @swagger
@@ -207,7 +205,7 @@ router.patch('/:id/status', restrictTo('system_admin', 'parking_manager', 'parki
  *       200:
  *         description: Slot unlocked
  */
-router.post('/:id/lock', ctrl.lockSlot);
-router.delete('/:id/lock', ctrl.unlockSlot);
+router.post('/:id/lock', protect, ctrl.lockSlot);
+router.delete('/:id/lock', protect, ctrl.unlockSlot);
 
 module.exports = router;

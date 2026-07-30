@@ -11,8 +11,8 @@ const workScheduleSchema = new mongoose.Schema({
     ref: 'ParkingLot',
     required: true,
   },
-  weekStartDate: { // The start date of the week (Monday)
-    type: String, // Format YYYY-MM-DD
+  monthYear: { // Format YYYY-MM
+    type: String,
     required: true,
   },
   shifts: [{

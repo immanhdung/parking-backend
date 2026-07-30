@@ -3,9 +3,7 @@ const router = express.Router();
 const floorService = require('../floor.service');
 const ApiResponse = require('../../../utils/ApiResponse');
 const asyncHandler = require('../../../utils/asyncHandler');
-const { protect, restrictTo } = require('../../../middleware/auth');
-
-router.use(protect);
+const { protect, restrictTo, optionalAuth } = require('../../../middleware/auth');
 
 /**
  * @swagger
@@ -53,27 +51,27 @@ router.use(protect);
  *       201:
  *         description: Floor created
  */
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   const { docs, pagination } = await floorService.getAll(req.query);
   ApiResponse.paginated(res, 'Floors retrieved.', docs, pagination);
 }));
 
-router.post('/', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+router.post('/', protect, restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   const floor = await floorService.create(req.body);
   ApiResponse.created(res, 'Floor created.', floor);
 }));
 
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   const floor = await floorService.getById(req.params.id);
   ApiResponse.success(res, 'Floor retrieved.', floor);
 }));
 
-router.put('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+router.put('/:id', protect, restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   const floor = await floorService.update(req.params.id, req.body);
   ApiResponse.success(res, 'Floor updated.', floor);
 }));
 
-router.delete('/:id', restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
+router.delete('/:id', protect, restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
   await floorService.delete(req.params.id);
   ApiResponse.success(res, 'Floor deleted.');
 }));

@@ -4,13 +4,13 @@ const mongoose = require('mongoose');
 
 exports.createOrUpdate = async (req, res, next) => {
   try {
-    const { parkingLotId, weekStartDate, shifts } = req.body;
+    const { parkingLotId, monthYear, shifts } = req.body;
     
     // Check if exists
     let schedule = await WorkSchedule.findOne({
       staff: req.user._id,
       parkingLot: parkingLotId,
-      weekStartDate
+      monthYear
     });
     
     if (schedule && schedule.status !== 'pending') {
@@ -25,7 +25,7 @@ exports.createOrUpdate = async (req, res, next) => {
       schedule = await WorkSchedule.create({
         staff: req.user._id,
         parkingLot: parkingLotId,
-        weekStartDate,
+        monthYear,
         shifts,
         status: 'pending'
       });
@@ -46,7 +46,7 @@ exports.getMySchedules = async (req, res, next) => {
     const filter = { staff: req.user._id };
     if (parkingLotId) filter.parkingLot = parkingLotId;
     
-    const schedules = await WorkSchedule.find(filter).sort('-weekStartDate');
+    const schedules = await WorkSchedule.find(filter).sort('-monthYear');
     res.status(200).json({
       success: true,
       data: schedules
@@ -68,7 +68,7 @@ exports.getManagerSchedules = async (req, res, next) => {
     const schedules = await WorkSchedule.find(filter)
       .populate('staff', 'fullName email phone')
       .populate('parkingLot', 'name code')
-      .sort('-weekStartDate');
+      .sort('-monthYear');
       
     res.status(200).json({
       success: true,
