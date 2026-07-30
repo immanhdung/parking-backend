@@ -18,6 +18,7 @@ const incidentRoutes = require('../modules/incidents/routes/incident.routes');
 const vehicleRoutes = require('../modules/vehicles/routes/vehicle.routes');
 const lprRoutes = require('../modules/lpr/routes/lpr.routes');
 const monthlyPassRoutes = require('../modules/monthlyPasses/routes/monthlyPass.routes');
+const workScheduleRoutes = require('../modules/workSchedules/routes/workSchedule.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -37,6 +38,7 @@ router.use('/incidents', incidentRoutes);
 router.use('/vehicles', vehicleRoutes);
 router.use('/lpr', lprRoutes);
 router.use('/monthly-passes', monthlyPassRoutes);
+router.use('/work-schedules', workScheduleRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

@@ -29,6 +29,7 @@ class IncidentService {
         { path: 'parkingLot', select: 'name code' },
         { path: 'slot', select: 'slotCode' },
         { path: 'assignedTo', select: 'fullName' },
+        { path: 'parkingSession', select: 'sessionCode vehicleInfo evidenceImages' }
       ],
     });
   }
@@ -61,12 +62,16 @@ class IncidentService {
   }
 
   async resolve(id, resolutionData, staffId, file) {
+    const { parkingSession, ...restResolution } = resolutionData;
     const updateQuery = {
       $set: {
         status: 'resolved',
-        resolution: { ...resolutionData, resolvedBy: staffId, resolvedAt: new Date() },
+        resolution: { ...restResolution, resolvedBy: staffId, resolvedAt: new Date() },
       }
     };
+    if (parkingSession) {
+      updateQuery.$set.parkingSession = parkingSession;
+    }
     if (file) {
       updateQuery.$push = { images: { url: `/uploads/evidence/${file.filename}`, publicId: file.filename } };
     }
