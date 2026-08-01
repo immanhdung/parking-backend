@@ -6,15 +6,18 @@ const vehicleTypeSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Vehicle type name is required'],
       trim: true,
-      unique: true,
     },
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
     }, // e.g. CAR, MOTORBIKE, BICYCLE
+    parkingLot: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ParkingLot',
+      default: null, // null = global (legacy); ObjectId = per-lot
+    },
     description: String,
     icon: String, // Icon URL or class name
     size: {
@@ -42,6 +45,11 @@ const vehicleTypeSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      blockHours: {
+        type: Number,
+        default: 4,
+        min: 1,
+      },
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
@@ -55,6 +63,9 @@ const vehicleTypeSchema = new mongoose.Schema(
 
 vehicleTypeSchema.index({ isActive: 1 });
 vehicleTypeSchema.index({ isDeleted: 1 });
+vehicleTypeSchema.index({ parkingLot: 1 });
+// Unique per lot: same code cannot exist twice in the same lot (null lot = global)
+vehicleTypeSchema.index({ code: 1, parkingLot: 1 }, { unique: true });
 
 vehicleTypeSchema.pre(/^find/, function (next) {
   if (!this._conditions.includeDeleted) {

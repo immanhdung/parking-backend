@@ -156,9 +156,15 @@ class ParkingLotService {
     if (!lot) throw ApiError.notFound('Parking lot not found.');
 
     const User = require('../users/user.model');
+
+    // Include both staff list AND the assigned manager
+    const allIds = [...lot.staff];
+    if (lot.manager && !allIds.some(id => id.toString() === lot.manager.toString())) {
+      allIds.push(lot.manager);
+    }
+
     const staff = await User.find({
-      _id: { $in: lot.staff },
-      role: { $in: ['parking_staff', 'parking_manager'] },
+      _id: { $in: allIds },
     })
       .select('fullName email phone avatar status role createdAt')
       .sort({ fullName: 1 });
@@ -286,53 +292,84 @@ class ParkingLotService {
   async assignManagerByEmail(parkingLotId, email) {
     const User = require('../users/user.model');
     const { sendEmail } = require('../../utils/email');
+    const crypto = require('crypto');
+    const bcrypt = require('bcryptjs');
 
     const lot = await ParkingLot.findById(parkingLotId);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) throw ApiError.notFound(`No user found with email "${email}".`);
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await User.findOne({ email: normalizedEmail });
+    let isNewUser = false;
+    let tempPassword = null;
 
-    if (user.role === 'system_admin') {
-      throw ApiError.badRequest('Cannot assign system_admin as a parking manager.');
+    if (!user) {
+      // Auto-create account
+      tempPassword = crypto.randomBytes(6).toString('hex'); // e.g. "a3f9c2b1d4e5"
+      const hashed = await bcrypt.hash(tempPassword, 12);
+      user = await User.create({
+        fullName: normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        password: hashed,
+        role: 'parking_manager',
+        status: 'active',
+        isEmailVerified: true,
+        assignedParkingLot: [parkingLotId],
+      });
+      isNewUser = true;
+    } else {
+      if (user.role === 'system_admin') {
+        throw ApiError.badRequest('Cannot assign system_admin as a parking manager.');
+      }
+      if (lot.manager?.toString() === user._id.toString()) {
+        throw ApiError.conflict('User is already the manager of this parking lot.');
+      }
+      await User.findByIdAndUpdate(user._id, {
+        role: 'parking_manager',
+        $addToSet: { assignedParkingLot: parkingLotId },
+      });
     }
-
-    // Check if already manager of this lot
-    if (lot.manager?.toString() === user._id.toString()) {
-      throw ApiError.conflict('User is already the manager of this parking lot.');
-    }
-
-    // Promote role to parking_manager
-    user.role = 'parking_manager';
-    // Add this lot to user's assigned lots (no conflict check)
-    await User.findByIdAndUpdate(user._id, {
-      role: 'parking_manager',
-      $addToSet: { assignedParkingLot: parkingLotId },
-    });
 
     lot.manager = user._id;
     await lot.save();
 
-    // Send notification email (non-blocking)
-    sendEmail({
-      to: user.email,
-      subject: `You have been appointed as Manager – ${lot.name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #4f46e5;">🏢 Manager Appointment</h2>
-          <p>Hi <strong>${user.fullName}</strong>,</p>
-          <p>You have been appointed as the <strong>Parking Manager</strong> for:</p>
-          <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #4f46e5;">
-            <p style="margin:0"><strong>${lot.name}</strong></p>
-            <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
-          </div>
-          <p>You can now log in to the Manager Portal to set up and manage this building.</p>
-          <p style="color: #6b7280; font-size: 12px;">If this was a mistake, please contact your system administrator.</p>
-        </div>
-      `,
-    }).catch(() => {});
+    // Send email
+    const subject = isNewUser
+      ? `Your new Manager account – ${lot.name}`
+      : `You have been appointed as Manager – ${lot.name}`;
 
-    return { message: 'Manager assigned successfully.', user: { _id: user._id, fullName: user.fullName, email: user.email } };
+    const html = isNewUser ? `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4f46e5;">🏢 Welcome to Parking Management</h2>
+        <p>Hi <strong>${user.fullName}</strong>,</p>
+        <p>An account has been created for you as <strong>Parking Manager</strong> at:</p>
+        <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #4f46e5;">
+          <p style="margin:0"><strong>${lot.name}</strong></p>
+          <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
+        </div>
+        <p>Your login credentials:</p>
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 8px; font-family: monospace;">
+          <p style="margin:0"><strong>Email:</strong> ${user.email}</p>
+          <p style="margin:4px 0 0"><strong>Temporary Password:</strong> ${tempPassword}</p>
+        </div>
+        <p style="color: #ef4444; font-size: 13px;">⚠️ Please change your password after first login.</p>
+      </div>
+    ` : `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4f46e5;">🏢 Manager Appointment</h2>
+        <p>Hi <strong>${user.fullName}</strong>,</p>
+        <p>You have been appointed as the <strong>Parking Manager</strong> for:</p>
+        <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #4f46e5;">
+          <p style="margin:0"><strong>${lot.name}</strong></p>
+          <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
+        </div>
+        <p>You can now log in to the Manager Portal to set up and manage this building.</p>
+      </div>
+    `;
+
+    sendEmail({ to: user.email, subject, html }).catch(() => {});
+
+    return { message: isNewUser ? 'Account created and manager assigned.' : 'Manager assigned successfully.', user: { _id: user._id, fullName: user.fullName, email: user.email, isNewUser } };
   }
 
   /**
@@ -344,6 +381,8 @@ class ParkingLotService {
   async addStaffByEmail(parkingLotId, email, requestingUserId) {
     const User = require('../users/user.model');
     const { sendEmail } = require('../../utils/email');
+    const crypto = require('crypto');
+    const bcrypt = require('bcryptjs');
 
     const lot = await ParkingLot.findById(parkingLotId);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
@@ -359,50 +398,86 @@ class ParkingLotService {
       }
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) throw ApiError.notFound(`No user found with email "${email}".`);
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await User.findOne({ email: normalizedEmail });
+    let isNewUser = false;
+    let tempPassword = null;
 
-    if (user.role === 'system_admin') {
-      throw ApiError.badRequest('Cannot assign system_admin as staff.');
+    if (!user) {
+      // Auto-create account
+      tempPassword = crypto.randomBytes(6).toString('hex');
+      const hashed = await bcrypt.hash(tempPassword, 12);
+      user = await User.create({
+        fullName: normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        password: hashed,
+        role: 'parking_staff',
+        status: 'active',
+        isEmailVerified: true,
+        assignedParkingLot: [parkingLotId],
+      });
+      isNewUser = true;
+    } else {
+      if (user.role === 'system_admin') {
+        throw ApiError.badRequest('Cannot assign system_admin as staff.');
+      }
+      if (user.role === 'parking_manager') {
+        throw ApiError.badRequest('User is a parking manager and cannot be added as staff.');
+      }
+      if (lot.staff.some(id => id.toString() === user._id.toString())) {
+        throw ApiError.conflict('User is already assigned to this parking lot.');
+      }
+      await User.findByIdAndUpdate(user._id, {
+        role: 'parking_staff',
+        assignedParkingLot: [parkingLotId],
+      });
     }
-    if (user.role === 'parking_manager') {
-      throw ApiError.badRequest('User is a parking manager and cannot be added as staff.');
+
+    if (!isNewUser) {
+      lot.staff.push(user._id);
+      await lot.save();
+    } else {
+      lot.staff.push(user._id);
+      await lot.save();
     }
 
-    // Check if already in this lot's staff list
-    if (lot.staff.some(id => id.toString() === user._id.toString())) {
-      throw ApiError.conflict('User is already assigned to this parking lot.');
-    }
+    // Send email
+    const subject = isNewUser
+      ? `Your new Staff account – ${lot.name}`
+      : `You have been added as Staff – ${lot.name}`;
 
-    // Set role to parking_staff & add lot to user's assigned lots
-    await User.findByIdAndUpdate(user._id, {
-      role: 'parking_staff',
-      $addToSet: { assignedParkingLot: parkingLotId },
-    });
-
-    lot.staff.push(user._id);
-    await lot.save();
-
-    // Send notification email (non-blocking)
-    sendEmail({
-      to: user.email,
-      subject: `You have been added as Staff – ${lot.name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #7c3aed;">👷 Staff Assignment</h2>
-          <p>Hi <strong>${user.fullName}</strong>,</p>
-          <p>You have been assigned as <strong>Parking Staff</strong> at:</p>
-          <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #7c3aed;">
-            <p style="margin:0"><strong>${lot.name}</strong></p>
-            <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
-          </div>
-          <p>Please log in to the Staff Portal to view your schedule and duties.</p>
-          <p style="color: #6b7280; font-size: 12px;">If this was a mistake, please contact your manager.</p>
+    const html = isNewUser ? `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">👷 Welcome to the Team</h2>
+        <p>Hi <strong>${user.fullName}</strong>,</p>
+        <p>An account has been created for you as <strong>Parking Staff</strong> at:</p>
+        <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #7c3aed;">
+          <p style="margin:0"><strong>${lot.name}</strong></p>
+          <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
         </div>
-      `,
-    }).catch(() => {});
+        <p>Your login credentials:</p>
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 8px; font-family: monospace;">
+          <p style="margin:0"><strong>Email:</strong> ${user.email}</p>
+          <p style="margin:4px 0 0"><strong>Temporary Password:</strong> ${tempPassword}</p>
+        </div>
+        <p style="color: #ef4444; font-size: 13px;">⚠️ Please change your password after first login.</p>
+      </div>
+    ` : `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">👷 Staff Assignment</h2>
+        <p>Hi <strong>${user.fullName}</strong>,</p>
+        <p>You have been assigned as <strong>Parking Staff</strong> at:</p>
+        <div style="background: #f5f3ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #7c3aed;">
+          <p style="margin:0"><strong>${lot.name}</strong></p>
+          <p style="margin:4px 0 0; color:#6b7280;">${lot.address?.street || ''} ${lot.address?.district || ''}, ${lot.address?.city || ''}</p>
+        </div>
+        <p>Please log in to the Staff Portal to view your schedule and duties.</p>
+      </div>
+    `;
 
-    return { message: 'Staff added successfully.', user: { _id: user._id, fullName: user.fullName, email: user.email } };
+    sendEmail({ to: user.email, subject, html }).catch(() => {});
+
+    return { message: isNewUser ? 'Account created and staff assigned.' : 'Staff added successfully.', user: { _id: user._id, fullName: user.fullName, email: user.email, isNewUser } };
   }
 
   /**

@@ -62,7 +62,14 @@ exports.getManagerSchedules = async (req, res, next) => {
     const filter = {};
     if (parkingLotId) filter.parkingLot = parkingLotId;
     if (req.user.role === 'parking_manager' && req.user.assignedParkingLot) {
-      filter.parkingLot = req.user.assignedParkingLot;
+      const assigned = req.user.assignedParkingLot;
+      if (parkingLotId) {
+        filter.parkingLot = parkingLotId;
+      } else if (Array.isArray(assigned) && assigned.length > 0) {
+        filter.parkingLot = { $in: assigned };
+      } else if (assigned) {
+        filter.parkingLot = assigned;
+      }
     }
     
     const schedules = await WorkSchedule.find(filter)

@@ -65,6 +65,30 @@ zoneRouter.get('/', optionalAuth, asyncHandler(async (req, res) => {
       { path: 'allowedVehicleTypes', select: 'name code' },
     ],
   });
+
+  // Attach live slot counts from ParkingSlot collection
+  if (docs.length > 0) {
+    const ParkingSlot = require('../../parkingSlots/parkingSlot.model');
+    const mongoose = require('mongoose');
+    const zoneIds = docs.map(d => new mongoose.Types.ObjectId(d._id));
+    const agg = await ParkingSlot.aggregate([
+      { $match: { zone: { $in: zoneIds }, isDeleted: { $ne: true } } },
+      { $group: { _id: { zone: '$zone', status: '$status' }, count: { $sum: 1 } } },
+    ]);
+    const countMap = {};
+    agg.forEach(r => {
+      const zid = r._id.zone.toString();
+      if (!countMap[zid]) countMap[zid] = { total: 0, available: 0 };
+      countMap[zid].total += r.count;
+      if (r._id.status === 'available') countMap[zid].available += r.count;
+    });
+    docs.forEach(z => {
+      const c = countMap[z._id.toString()] || { total: 0, available: 0 };
+      z.totalSlots = c.total;
+      z.availableSlots = c.available;
+    });
+  }
+
   ApiResponse.paginated(res, 'Zones retrieved.', docs, pagination);
 }));
 
@@ -150,14 +174,25 @@ const vehicleTypeRouter = express.Router();
  *         description: Vehicle type created
  */
 vehicleTypeRouter.get('/', optionalAuth, asyncHandler(async (req, res) => {
-  const types = await VehicleType.find({ isActive: true }).sort({ name: 1 });
+  const { parkingLot, isActive } = req.query;
+  const filter = { isActive: isActive !== 'false' };
+  if (parkingLot) {
+    // Return vehicle types for this specific lot
+    filter.parkingLot = parkingLot;
+  } else {
+    // Default: return global types (null parkingLot) 
+    filter.parkingLot = null;
+  }
+  const types = await VehicleType.find(filter).sort({ name: 1 });
   ApiResponse.success(res, 'Vehicle types retrieved.', types);
 }));
 
 vehicleTypeRouter.post('/', protect, restrictTo('system_admin', 'parking_manager'), asyncHandler(async (req, res) => {
-  const existing = await VehicleType.findOne({ code: req.body.code?.toUpperCase() });
-  if (existing) throw ApiError.conflict('Vehicle type code already exists.');
-  const vt = await VehicleType.create({ ...req.body, code: req.body.code?.toUpperCase() });
+  const code = req.body.code?.toUpperCase();
+  const parkingLot = req.body.parkingLot || null;
+  const existing = await VehicleType.findOne({ code, parkingLot });
+  if (existing) throw ApiError.conflict('Vehicle type code already exists for this parking lot.');
+  const vt = await VehicleType.create({ ...req.body, code, parkingLot });
   ApiResponse.created(res, 'Vehicle type created.', vt);
 }));
 

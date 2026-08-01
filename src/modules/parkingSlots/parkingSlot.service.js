@@ -81,6 +81,7 @@ class ParkingSlotService {
 
     // Update floor and zone slot counts
     await this._updateFloorSlotCounts(data.floor);
+    if (data.zone) await this._updateZoneSlotCounts(data.zone);
 
     return slot.populate(['floor', 'zone', 'vehicleType']);
   }
@@ -129,6 +130,7 @@ class ParkingSlotService {
     // Sync floor counts if status changed
     if (oldStatus !== status) {
       await this._updateFloorSlotCounts(slot.floor);
+      if (slot.zone) await this._updateZoneSlotCounts(slot.zone);
     }
 
     return slot;
@@ -143,11 +145,13 @@ class ParkingSlotService {
     }
 
     const floorId = slot.floor;
+    const zoneId = slot.zone;
     slot.isDeleted = true;
     slot.deletedAt = new Date();
     await slot.save();
 
     await this._updateFloorSlotCounts(floorId);
+    if (zoneId) await this._updateZoneSlotCounts(zoneId);
     return { message: 'Slot deleted.' };
   }
 
@@ -233,6 +237,40 @@ class ParkingSlotService {
       totalSlots: counts.total,
       availableSlots: counts.available || 0,
       occupiedSlots: counts.occupied || 0,
+    });
+  }
+
+  /**
+   * Sync slot counts on zone model
+   */
+  async _updateZoneSlotCounts(zoneId) {
+    const mongoose = require('mongoose');
+    const result = await ParkingSlot.aggregate([
+      {
+        $match: {
+          zone: mongoose.Types.ObjectId.isValid(zoneId)
+            ? new mongoose.Types.ObjectId(zoneId)
+            : zoneId,
+          isDeleted: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = { total: 0, available: 0 };
+    result.forEach(r => {
+      if (r._id === 'available') counts.available = r.count;
+      counts.total += r.count;
+    });
+
+    await Zone.findByIdAndUpdate(zoneId, {
+      totalSlots: counts.total,
+      availableSlots: counts.available,
     });
   }
 

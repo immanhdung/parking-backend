@@ -12,14 +12,19 @@ class ReportService {
    */
   async getDashboardStats(parkingLotId, user) {
     const filter = {};
-    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        filter.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+    if (parkingLotId) {
+      // Explicit lot filter takes priority (e.g. manager selecting a specific lot)
+      filter.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
+    } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      // Restrict to assigned lots — assignedParkingLot can be array or single
+      const assigned = user.assignedParkingLot;
+      if (assigned && Array.isArray(assigned) && assigned.length > 0) {
+        filter.parkingLot = { $in: assigned.map(id => new mongoose.Types.ObjectId(id)) };
+      } else if (assigned && !Array.isArray(assigned)) {
+        filter.parkingLot = new mongoose.Types.ObjectId(assigned);
       } else {
         filter.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
       }
-    } else if (parkingLotId) {
-      filter.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
 
     const today = getDateRange('today');
@@ -95,14 +100,17 @@ class ReportService {
       ],
     };
 
-    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+    if (parkingLotId) {
+      match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
+    } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      const assigned = user.assignedParkingLot;
+      if (assigned && Array.isArray(assigned) && assigned.length > 0) {
+        match.parkingLot = { $in: assigned.map(id => new mongoose.Types.ObjectId(id)) };
+      } else if (assigned && !Array.isArray(assigned)) {
+        match.parkingLot = new mongoose.Types.ObjectId(assigned);
       } else {
         match.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
       }
-    } else if (parkingLotId) {
-      match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
 
     // Use $addFields to normalize date field: prefer paidAt, fallback to createdAt
@@ -201,14 +209,17 @@ class ReportService {
       status: 'completed',
     };
 
-    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        match.parkingLot = new mongoose.Types.ObjectId(user.assignedParkingLot);
+    if (parkingLotId) {
+      match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
+    } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      const assigned = user.assignedParkingLot;
+      if (assigned && Array.isArray(assigned) && assigned.length > 0) {
+        match.parkingLot = { $in: assigned.map(id => new mongoose.Types.ObjectId(id)) };
+      } else if (assigned && !Array.isArray(assigned)) {
+        match.parkingLot = new mongoose.Types.ObjectId(assigned);
       } else {
         match.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
       }
-    } else if (parkingLotId) {
-      match.parkingLot = new mongoose.Types.ObjectId(parkingLotId);
     }
 
     const [sessionsByDay, byVehicleType, avgDuration, peakHours] = await Promise.all([
@@ -292,10 +303,14 @@ class ReportService {
    * Occupancy rate report
    */
   async getOccupancyReport(parkingLotId, user) {
-    let lotId = parkingLotId;
-    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        lotId = user.assignedParkingLot;
+    if (parkingLotId) {
+      lotId = parkingLotId;
+    } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      const assigned = user.assignedParkingLot;
+      if (assigned && Array.isArray(assigned) && assigned.length > 0) {
+        lotId = assigned[0]; // default to first assigned lot
+      } else if (assigned && !Array.isArray(assigned)) {
+        lotId = assigned;
       } else {
         lotId = '000000000000000000000000';
       }
@@ -340,14 +355,17 @@ class ReportService {
       entryTime: { $gte: start, $lte: end },
     };
 
-    if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        filter.parkingLot = user.assignedParkingLot;
+    if (parkingLotId) {
+      filter.parkingLot = parkingLotId;
+    } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
+      const assigned = user.assignedParkingLot;
+      if (assigned && Array.isArray(assigned) && assigned.length > 0) {
+        filter.parkingLot = { $in: assigned };
+      } else if (assigned && !Array.isArray(assigned)) {
+        filter.parkingLot = assigned;
       } else {
         filter.parkingLot = '000000000000000000000000';
       }
-    } else if (parkingLotId) {
-      filter.parkingLot = parkingLotId;
     }
 
     const sessions = await ParkingSession.find(filter)
