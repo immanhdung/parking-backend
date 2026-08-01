@@ -1,5 +1,6 @@
 const parkingLotService = require('./parkingLot.service');
 const ApiResponse = require('../../utils/ApiResponse');
+const ApiError = require('../../utils/ApiError');
 const asyncHandler = require('../../utils/asyncHandler');
 
 class ParkingLotController {
@@ -64,7 +65,30 @@ class ParkingLotController {
     const staff = await parkingLotService.getAvailableStaff(req.query);
     ApiResponse.success(res, 'Available staff retrieved.', staff);
   });
+
+  /**
+   * POST /parking-lots/:id/assign-manager  (admin only)
+   * Body: { email }
+   */
+  assignManagerByEmail = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) throw ApiError.badRequest('Email is required.');
+    const result = await parkingLotService.assignManagerByEmail(req.params.id, email);
+    ApiResponse.success(res, result.message, result.user);
+  });
+
+  /**
+   * POST /parking-lots/:id/add-staff  (manager/admin)
+   * Body: { email }
+   */
+  addStaffByEmail = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) throw ApiError.badRequest('Email is required.');
+    const result = await parkingLotService.addStaffByEmail(req.params.id, email, req.user._id);
+    ApiResponse.success(res, result.message, result.user);
+  });
 }
 
 module.exports = new ParkingLotController();
+
 

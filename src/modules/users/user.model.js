@@ -48,12 +48,13 @@ const userSchema = new mongoose.Schema(
       enum: ['active', 'inactive', 'blocked', 'pending'],
       default: 'pending',
     },
-    // Assigned parking lot (for manager/staff)
-    assignedParkingLot: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'ParkingLot',
-      default: null,
-    },
+    // Assigned parking lots (manager/staff can manage multiple)
+    assignedParkingLot: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ParkingLot',
+      }
+    ],
     // Refresh tokens
     refreshTokens: [
       {

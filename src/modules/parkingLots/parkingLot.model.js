@@ -19,8 +19,8 @@ const parkingLotSchema = new mongoose.Schema(
     address: {
       street: { type: String, required: true },
       ward: String,
-      district: { type: String, required: true },
-      city: { type: String, required: true },
+      district: { type: String },
+      city: { type: String },
       coordinates: {
         lat: Number,
         lng: Number,

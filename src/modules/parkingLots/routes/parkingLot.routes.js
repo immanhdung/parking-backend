@@ -192,4 +192,16 @@ router.post('/:id/staff', restrictTo('parking_manager', 'system_admin'), ctrl.as
  */
 router.delete('/:id/staff/:staffId', restrictTo('parking_manager', 'system_admin'), ctrl.removeStaff);
 
+/**
+ * POST /parking-lots/:id/assign-manager
+ * Admin: find user by email, promote to parking_manager, assign to lot, send email
+ */
+router.post('/:id/assign-manager', restrictTo('system_admin'), ctrl.assignManagerByEmail);
+
+/**
+ * POST /parking-lots/:id/add-staff
+ * Manager/Admin: find user by email, set as parking_staff, assign to lot, send email
+ */
+router.post('/:id/add-staff', restrictTo('parking_manager', 'system_admin'), ctrl.addStaffByEmail);
+
 module.exports = router;
