@@ -34,7 +34,27 @@ function intervalsOverlap(s1, e1, s2, e2) {
 }
 
 /**
+ * How many milliseconds before the booking start time a customer is allowed
+ * to check in early. Currently 15 minutes.
+ */
+const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * How many milliseconds after the booking end time are reserved for the car
+ * to exit the parking lot. Currently 15 minutes.
+ * This means User 2 can only book a slot starting 15 min after User 1's booking ends.
+ */
+const CHECKOUT_BUFFER_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
  * Returns all conflicting approved/pending bookings for a given slot in a time range.
+ *
+ * The EFFECTIVE window of each existing booking is:
+ *   [scheduledStart - EARLY_CHECKIN_BUFFER_MS,  scheduledEnd + CHECKOUT_BUFFER_MS]
+ *
+ * Example: User 1 books 19:00 → 23:00
+ *   → effective window = 18:45 → 23:15
+ *   → User 2 cannot start earlier than 23:15
  */
 async function getConflictingBookings(slotId, wantedStart, wantedEnd, excludeBookingId = null) {
   const filter = {
@@ -46,7 +66,9 @@ async function getConflictingBookings(slotId, wantedStart, wantedEnd, excludeBoo
   const existing = await Booking.find(filter);
   return existing.filter(b => {
     const { start, end } = bookingToAbsoluteTimes(b);
-    return intervalsOverlap(wantedStart, wantedEnd, start, end);
+    const effectiveStart = new Date(start.getTime() - EARLY_CHECKIN_BUFFER_MS);
+    const effectiveEnd   = new Date(end.getTime()   + CHECKOUT_BUFFER_MS);
+    return intervalsOverlap(wantedStart, wantedEnd, effectiveStart, effectiveEnd);
   });
 }
 

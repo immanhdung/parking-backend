@@ -203,6 +203,25 @@ class ParkingSessionService {
         throw ApiError.badRequest('This booking is not valid for this parking lot.');
       }
 
+      // ── Early check-in enforcement ────────────────────────────────────────
+      // Allow check-in up to EARLY_CHECKIN_BUFFER_MS (15 min) before scheduled start.
+      // Reject if the customer arrives too early (> 15 min before start time).
+      const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000;
+      const [bSH, bSM] = booking.startTime.split(':').map(Number);
+      const bookingStart = new Date(booking.scheduledDate);
+      bookingStart.setHours(bSH, bSM, 0, 0);
+      const earliestAllowed = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
+      const now = new Date();
+      if (now < earliestAllowed) {
+        const minutesUntilAllowed = Math.ceil((earliestAllowed - now) / 60000);
+        throw ApiError.badRequest(
+          `Too early to check in. Your booking starts at ${booking.startTime}. ` +
+          `Check-in is allowed from ${new Date(earliestAllowed).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ` +
+          `(${minutesUntilAllowed} minute(s) from now).`
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       slot = booking.assignedSlot;
       vehicleType = booking.vehicleType;
       userId = booking.user;
@@ -213,6 +232,7 @@ class ParkingSessionService {
       if (licensePlate && booking.vehicleInfo?.licensePlate &&
         booking.vehicleInfo.licensePlate !== licensePlate.toUpperCase()) {
         throw ApiError.badRequest('License plate does not match booking.');
+
       }
     } else {
       // Walk-in check-in

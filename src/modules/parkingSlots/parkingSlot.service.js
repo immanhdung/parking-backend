@@ -241,15 +241,22 @@ class ParkingSlotService {
           const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
           const bookingEnd = new Date(bookingStart.getTime() + durationMs);
 
+          // Effective window = [bookingStart - 15min,  bookingEnd + 15min]
+          // • 15 min BEFORE start  → early check-in buffer
+          // • 15 min AFTER end     → checkout/exit buffer
+          const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000;
+          const CHECKOUT_BUFFER_MS      = 15 * 60 * 1000;
+          const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
+          const effectiveEnd   = new Date(bookingEnd.getTime()   + CHECKOUT_BUFFER_MS);
+
           let isConflict = false;
 
           if (wantedStart && wantedEnd) {
-            // Customer booking flow: check exact time overlap with their chosen window
-            // Touching boundaries (wantedEnd === bookingStart) is NOT a conflict
-            isConflict = wantedStart < bookingEnd && wantedEnd > bookingStart;
+            // Customer booking flow: any overlap with the effective window is a conflict
+            isConflict = wantedStart < effectiveEnd && wantedEnd > effectiveStart;
           } else {
-            // Staff Live Map: flag as reserved if booking starts within the next 30 min
-            isConflict = bookingStart >= now && bookingStart <= staffWindowEnd;
+            // Staff Live Map: flag as reserved if effective window overlaps "now → now+30min"
+            isConflict = effectiveStart >= now && effectiveStart <= staffWindowEnd;
           }
 
           if (isConflict) {
