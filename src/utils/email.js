@@ -131,10 +131,32 @@ const sendShiftAssignmentEmail = async (user, shiftData) => {
   });
 };
 
+const sendBuildingAssignmentEmail = async (user, parkingLot) => {
+  const loginUrl = `${process.env.FRONTEND_URL}/login`;
+  await sendEmail({
+    to: user.email,
+    subject: 'You have been assigned to a new Parking Building',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">Building Assignment Notification</h2>
+        <p>Hello <strong>${user.fullName}</strong>,</p>
+        <p>You have been assigned to a new parking building: <strong>${parkingLot.name}</strong> (${parkingLot.code}).</p>
+        <p>Please log in to your account and check your Work Schedule. If your schedule is not suitable, you can request a change or leave through the system.</p>
+        <a href="${loginUrl}" 
+           style="display: inline-block; padding: 12px 24px; background-color: #2563eb; 
+                  color: white; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+          Login to System
+        </a>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
   sendResetPasswordEmail,
   sendBookingConfirmation,
   sendShiftAssignmentEmail,
+  sendBuildingAssignmentEmail,
 };

@@ -100,20 +100,31 @@ class UserService {
    * Admin: update user (role, status, assignedParkingLot)
    */
   async adminUpdateUser(id, data) {
+    const user = await User.findById(id);
+    if (!user) throw ApiError.notFound('User not found.');
+
+    const oldAssigned = user.assignedParkingLot ? user.assignedParkingLot.toString() : null;
+
     const allowedFields = ['fullName', 'phone', 'role', 'status', 'assignedParkingLot'];
-    const updateData = {};
     allowedFields.forEach(field => {
-      if (data[field] !== undefined) updateData[field] = data[field];
+      if (data[field] !== undefined) user[field] = data[field];
     });
 
-    const user = await User.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    })
-      .select('-refreshTokens')
-      .populate('assignedParkingLot', 'name code');
+    await user.save();
 
-    if (!user) throw ApiError.notFound('User not found.');
+    const newAssigned = user.assignedParkingLot ? user.assignedParkingLot.toString() : null;
+    if (newAssigned && newAssigned !== oldAssigned) {
+      try {
+        await user.populate('assignedParkingLot', 'name code');
+        const { sendBuildingAssignmentEmail } = require('../../utils/email');
+        await sendBuildingAssignmentEmail(user, user.assignedParkingLot);
+      } catch (err) {
+        console.error('Failed to send assignment email:', err);
+      }
+    }
+
+    await user.populate('assignedParkingLot', 'name code');
+    user.refreshTokens = undefined;
     return user;
   }
 
