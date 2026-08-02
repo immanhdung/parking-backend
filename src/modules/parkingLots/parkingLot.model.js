@@ -65,6 +65,11 @@ const parkingLotSchema = new mongoose.Schema(
       maxBookingHours: { type: Number, default: 24 },
       maxAdvanceBookingDays: { type: Number, default: 7 },
       overtimeGracePeriodMinutes: { type: Number, default: 15 },
+      shiftQuotas: {
+        morning: { type: Number, default: 2 },
+        afternoon: { type: Number, default: 2 },
+        night: { type: Number, default: 2 },
+      }
     },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,

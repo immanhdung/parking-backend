@@ -21,11 +21,17 @@ const workScheduleSchema = new mongoose.Schema({
       type: String,
       enum: ['morning', 'afternoon', 'night'],
       required: true,
-    }
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending'
+    },
+    managerNote: String
   }],
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'published'],
     default: 'pending'
   },
   managerNote: String
