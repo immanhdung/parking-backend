@@ -136,11 +136,11 @@ const scanOverdueSessions = async () => {
   try {
     const now = new Date();
 
-    // Fetch active sessions linked to a booking that haven't been notified yet.
+    // Fetch active sessions linked to a booking. We check all of them to see
+    // if their slot is needed, regardless of whether we've sent the socket alert yet.
     const activeSessions = await ParkingSession.find({
       status: 'active',
       booking: { $ne: null },
-      overtimeNotificationSent: false,
     })
       .populate({ path: 'booking', select: 'endTime scheduledDate' })
       .populate('parkingLot', 'name')
@@ -167,19 +167,22 @@ const scanOverdueSessions = async () => {
       const lotId   = session.parkingLot?._id || session.parkingLot;
       const lotName = session.parkingLot?.name || 'Parking Lot';
 
-      // ── Emit Socket.IO alert to staff ──────────────────────────────────────
-      const alertPayload = {
-        sessionId:    session._id,
-        sessionCode:  session.sessionCode,
-        licensePlate: session.vehicleInfo?.licensePlate,
-        slotCode:     oldSlot?.slotCode,
-        parkingLotName: lotName,
-        overdueMinutes,
-        scheduledEnd,
-        userName: session.user?.fullName || 'Guest',
-        alertedAt: now,
-      };
-      if (lotId) emitOverdueAlert(lotId.toString(), alertPayload);
+      // ── Emit Socket.IO alert to staff (ONLY ONCE) ──────────────────────────
+      if (!session.overtimeNotificationSent) {
+        const alertPayload = {
+          sessionId:    session._id,
+          sessionCode:  session.sessionCode,
+          licensePlate: session.vehicleInfo?.licensePlate,
+          slotCode:     oldSlot?.slotCode,
+          parkingLotName: lotName,
+          overdueMinutes,
+          scheduledEnd,
+          userName: session.user?.fullName || 'Guest',
+          alertedAt: now,
+        };
+        if (lotId) emitOverdueAlert(lotId.toString(), alertPayload);
+        notifiedIds.push(session._id);
+      }
 
       // ── Check if slot is needed by an upcoming booking ─────────────────────
       const needed = await slotNeededSoon(oldSlot?._id);
@@ -251,19 +254,17 @@ const scanOverdueSessions = async () => {
           `(${overdueMinutes} min) but slot ${oldSlot?.slotCode} not yet needed.`
         );
       }
-
-      notifiedIds.push(session._id);
     }
 
-    if (!notifiedIds.length) return;
+    if (notifiedIds.length > 0) {
+      // Mark newly alerted sessions as notified for the Socket alert
+      await ParkingSession.updateMany(
+        { _id: { $in: notifiedIds } },
+        { $set: { overtimeNotificationSent: true } }
+      );
+    }
 
-    // Mark all processed sessions as notified
-    await ParkingSession.updateMany(
-      { _id: { $in: notifiedIds } },
-      { $set: { overtimeNotificationSent: true } }
-    );
-
-    logger.info(`[OverdueWorker] Scan complete. ${notifiedIds.length} overdue session(s) processed.`);
+    logger.info(`[OverdueWorker] Scan complete. ${activeSessions.length} active session(s) checked.`);
   } catch (err) {
     logger.error(`[OverdueWorker] Error during scan: ${err.message}`);
   }
