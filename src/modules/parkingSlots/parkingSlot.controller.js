@@ -64,7 +64,12 @@ class ParkingSlotController {
   });
 
   getFloorMap = asyncHandler(async (req, res) => {
-    const slots = await parkingSlotService.getFloorSlotMap(req.params.floorId);
+    const { wantedStart, wantedEnd } = req.query;
+    const options = {
+      wantedStart: wantedStart ? new Date(wantedStart) : null,
+      wantedEnd:   wantedEnd   ? new Date(wantedEnd)   : null,
+    };
+    const slots = await parkingSlotService.getFloorSlotMap(req.params.floorId, options);
     ApiResponse.success(res, 'Floor slot map retrieved.', slots);
   });
 

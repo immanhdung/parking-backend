@@ -11,6 +11,70 @@ const Pagination = require('../../utils/pagination');
 const { calculateParkingFee, calculateOvertimeFee } = require('../../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
 
+/** How far ahead (in ms) to protect upcoming bookings from walk-in check-ins */
+const WALK_IN_BUFFER_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+/**
+ * Find the best available slot for a walk-in customer.
+ * Skips any slot that has an upcoming approved/pending booking starting within
+ * WALK_IN_BUFFER_MS from now, to protect pre-booked customers.
+ */
+async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null) {
+  const now = new Date();
+  const bufferEnd = new Date(now.getTime() + WALK_IN_BUFFER_MS);
+
+  if (specificSlotId) {
+    // User or staff specified a slot — just validate it
+    const slot = await ParkingSlot.findById(specificSlotId).populate('floor zone');
+    if (!slot) throw ApiError.notFound('Slot not found.');
+    if (slot.status !== 'available') throw ApiError.badRequest(`Slot ${slot.slotCode} is not available.`);
+
+    // Check upcoming booking conflict for walk-in buffer
+    const upcomingBooking = await Booking.findOne({
+      assignedSlot: slot._id,
+      status: { $in: ['pending', 'approved'] },
+      // booking starts within 4 hours from now
+    }).sort({ scheduledDate: 1, startTime: 1 });
+
+    if (upcomingBooking) {
+      const [sH, sM] = upcomingBooking.startTime.split(':').map(Number);
+      const bookingStart = new Date(upcomingBooking.scheduledDate);
+      bookingStart.setHours(sH, sM, 0, 0);
+      if (bookingStart <= bufferEnd && bookingStart >= now) {
+        throw ApiError.badRequest(
+          `Slot ${slot.slotCode} has a booking starting at ${upcomingBooking.startTime}. Please use a different slot.`
+        );
+      }
+    }
+    return slot;
+  }
+
+  // Auto-find: get candidate available slots
+  const candidates = await ParkingSlot.find({
+    parkingLot: parkingLotId,
+    vehicleType: vehicleTypeId,
+    status: 'available',
+  }).populate('floor zone').sort({ 'floor.floorNumber': 1 }).limit(50);
+
+  for (const slot of candidates) {
+    const upcomingBooking = await Booking.findOne({
+      assignedSlot: slot._id,
+      status: { $in: ['pending', 'approved'] },
+    }).sort({ scheduledDate: 1, startTime: 1 });
+
+    if (upcomingBooking) {
+      const [sH, sM] = upcomingBooking.startTime.split(':').map(Number);
+      const bookingStart = new Date(upcomingBooking.scheduledDate);
+      bookingStart.setHours(sH, sM, 0, 0);
+      // Skip if the next booking starts within the buffer window
+      if (bookingStart >= now && bookingStart <= bufferEnd) continue;
+    }
+    return slot; // This slot is safe for a walk-in
+  }
+
+  throw ApiError.badRequest('No available slots for this vehicle type (all remaining slots are reserved for upcoming bookings).');
+}
+
 class ParkingSessionService {
   async getSessions(query, user) {
     const { page = 1, limit = 10, sort = '-entryTime', status, parkingLot, licensePlate, startDate, endDate } = query;
@@ -121,22 +185,13 @@ class ParkingSessionService {
       const actualParkingLotId = parkingLotId || monthlyPass.parkingLot;
 
       if (slotId) {
-        slot = await ParkingSlot.findById(slotId).populate('floor zone');
-        if (!slot) throw ApiError.notFound('Slot not found.');
-        if (slot.status !== 'available') throw ApiError.badRequest(`Slot ${slot.slotCode} is not available.`);
+        slot = await findWalkInSlot(actualParkingLotId, vehicleType._id || vehicleType, slotId);
         floorId = slot.floor._id || slot.floor;
         zoneId = slot.zone?._id || slot.zone;
       } else {
-        const available = await ParkingSlot.findOne({
-          parkingLot: actualParkingLotId,
-          vehicleType: vehicleType._id || vehicleType,
-          status: 'available',
-        }).populate('floor zone').sort({ 'floor.floorNumber': 1 });
-
-        if (!available) throw ApiError.badRequest('No available slots for this vehicle type.');
-        slot = available;
-        floorId = available.floor._id || available.floor;
-        zoneId = available.zone?._id || available.zone;
+        slot = await findWalkInSlot(actualParkingLotId, vehicleType._id || vehicleType);
+        floorId = slot.floor._id || slot.floor;
+        zoneId = slot.zone?._id || slot.zone;
       }
     } else if (bookingId) {
       // If checking in via booking
@@ -165,23 +220,14 @@ class ParkingSessionService {
       if (!vehicleType) throw ApiError.notFound('Vehicle type not found.');
 
       if (slotId) {
-        slot = await ParkingSlot.findById(slotId).populate('floor zone');
-        if (!slot) throw ApiError.notFound('Slot not found.');
-        if (slot.status !== 'available') throw ApiError.badRequest(`Slot ${slot.slotCode} is not available.`);
+        slot = await findWalkInSlot(parkingLotId, vehicleTypeId, slotId);
         floorId = slot.floor._id || slot.floor;
         zoneId = slot.zone?._id || slot.zone;
       } else {
-        // Auto-find available slot
-        const available = await ParkingSlot.findOne({
-          parkingLot: parkingLotId,
-          vehicleType: vehicleTypeId,
-          status: 'available',
-        }).populate('floor zone').sort({ 'floor.floorNumber': 1 });
-
-        if (!available) throw ApiError.badRequest('No available slots for this vehicle type.');
-        slot = available;
-        floorId = available.floor._id || available.floor;
-        zoneId = available.zone?._id || available.zone;
+        // Auto-find available slot, respecting the 4-hour walk-in buffer
+        slot = await findWalkInSlot(parkingLotId, vehicleTypeId);
+        floorId = slot.floor._id || slot.floor;
+        zoneId = slot.zone?._id || slot.zone;
       }
     }
 

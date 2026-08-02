@@ -9,6 +9,47 @@ const Pagination = require('../../utils/pagination');
 const { generateQRCode, suggestOptimalSlot, calculateParkingFee } = require('../../utils/helpers');
 const { emitSlotUpdate } = require('../../sockets/socket.server');
 
+/**
+ * Convert a booking's scheduledDate + startTime/endTime into absolute Date objects.
+ * Handles cross-midnight bookings (endTime < startTime).
+ */
+function bookingToAbsoluteTimes(booking) {
+  const [sH, sM] = booking.startTime.split(':').map(Number);
+  let [eH, eM] = booking.endTime.split(':').map(Number);
+  if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
+  const start = new Date(booking.scheduledDate);
+  start.setHours(sH, sM, 0, 0);
+  const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
+  const end = new Date(start.getTime() + durationMs);
+  return { start, end };
+}
+
+/**
+ * Check if two time intervals [s1, e1) and [s2, e2) overlap.
+ * Touching at a boundary (e.g. 19:00 == 19:00) is NOT considered an overlap
+ * so back-to-back bookings (15-19 then 19-23) are allowed.
+ */
+function intervalsOverlap(s1, e1, s2, e2) {
+  return s1 < e2 && e1 > s2;
+}
+
+/**
+ * Returns all conflicting approved/pending bookings for a given slot in a time range.
+ */
+async function getConflictingBookings(slotId, wantedStart, wantedEnd, excludeBookingId = null) {
+  const filter = {
+    assignedSlot: slotId,
+    status: { $in: ['pending', 'approved'] },
+  };
+  if (excludeBookingId) filter._id = { $ne: excludeBookingId };
+
+  const existing = await Booking.find(filter);
+  return existing.filter(b => {
+    const { start, end } = bookingToAbsoluteTimes(b);
+    return intervalsOverlap(wantedStart, wantedEnd, start, end);
+  });
+}
+
 class BookingService {
   async getBookings(query, user) {
     const {
@@ -201,30 +242,58 @@ class BookingService {
     let recommendedSlot = null;
 
     if (assignedSlot) {
-      recommendedSlot = await ParkingSlot.findById(assignedSlot).populate('floor', 'floorNumber').populate('zone', 'name');
-      if (!recommendedSlot || recommendedSlot.status !== 'available') {
-        throw ApiError.badRequest('The selected slot is no longer available. Please select another slot.');
+      recommendedSlot = await ParkingSlot.findById(assignedSlot)
+        .populate('floor', 'floorNumber')
+        .populate('zone', 'name');
+
+      if (!recommendedSlot || recommendedSlot.status === 'occupied' || recommendedSlot.status === 'maintenance') {
+        throw ApiError.badRequest('The selected slot is not available. Please select another slot.');
       }
+
       // Check if locked by someone else
-      if (recommendedSlot.lockedBy && recommendedSlot.lockedBy.toString() !== userId.toString() && recommendedSlot.lockedUntil && new Date(recommendedSlot.lockedUntil) > new Date()) {
-         throw ApiError.badRequest('The selected slot is currently being locked by another user.');
+      if (
+        recommendedSlot.lockedBy &&
+        recommendedSlot.lockedBy.toString() !== userId.toString() &&
+        recommendedSlot.lockedUntil &&
+        new Date(recommendedSlot.lockedUntil) > new Date()
+      ) {
+        throw ApiError.badRequest('The selected slot is currently being selected by another user.');
+      }
+
+      // --- TIME-BASED OVERLAP CHECK ---
+      // Check if any existing approved/pending booking for this slot overlaps with the requested time
+      const conflicts = await getConflictingBookings(recommendedSlot._id, finalEntryTime, finalExitTime);
+      if (conflicts.length > 0) {
+        const c = conflicts[0];
+        throw ApiError.badRequest(
+          `Slot is already booked from ${c.startTime} to ${c.endTime} on that day. Please choose a different time or slot.`
+        );
       }
     } else {
-      // Find optimal available slot (AI suggestion)
+      // --- AUTO-FIND SLOT with time-overlap filtering ---
       const filter = {
         parkingLot,
         vehicleType: resolvedVehicleType,
-        status: 'available',
+        status: { $in: ['available', 'reserved'] }, // 'reserved' status is now just a computed label; physically the slot can still accept future bookings
       };
       if (floorId) filter.floor = floorId;
       if (zoneId) filter.zone = zoneId;
 
-      const availableSlots = await ParkingSlot.find(filter)
+      const candidateSlots = await ParkingSlot.find(filter)
         .populate('floor', 'floorNumber')
         .populate('zone', 'name')
-        .limit(20);
+        .limit(50);
 
-      recommendedSlot = suggestOptimalSlot(availableSlots, vType);
+      // Filter out slots that have a time-overlapping booking
+      const freeSlots = [];
+      for (const slot of candidateSlots) {
+        // Skip physically occupied slots
+        if (slot.status === 'occupied' || slot.status === 'maintenance') continue;
+        const conflicts = await getConflictingBookings(slot._id, finalEntryTime, finalExitTime);
+        if (conflicts.length === 0) freeSlots.push(slot);
+      }
+
+      recommendedSlot = suggestOptimalSlot(freeSlots, vType);
     }
 
     // Estimate fee using standardized block logic
@@ -248,18 +317,21 @@ class BookingService {
       status: 'pending',
     });
 
-    // Reserve the slot if one was found
+    // Track the booking on the slot WITHOUT changing its physical status.
+    // The slot remains 'available' for future bookings in different time windows.
+    // The slot will only become 'occupied' when the vehicle actually checks in.
     if (recommendedSlot) {
       await ParkingSlot.findByIdAndUpdate(recommendedSlot._id, {
-        status: 'reserved',
-        currentBooking: booking._id,
+        currentBooking: booking._id, // track latest booking reference
       });
-      // Emit real-time update
+      // Emit real-time event — the frontend should treat a slot as 'reserved'
+      // only when a booking starts within the next 30 minutes (computed on getFloorSlotMap).
+      // Here we just notify that a new booking was created for this slot.
       try {
         emitSlotUpdate(parkingLot.toString(), {
           slotId: recommendedSlot._id,
           slotCode: recommendedSlot.slotCode,
-          status: 'reserved',
+          status: recommendedSlot.status, // keep real DB status
           bookingId: booking._id,
           floorId: recommendedSlot.floor?._id || recommendedSlot.floor,
           zoneId: recommendedSlot.zone?._id || recommendedSlot.zone,
@@ -330,19 +402,22 @@ class BookingService {
       throw ApiError.badRequest(`Cannot cancel a ${booking.status} booking.`);
     }
 
-    // Release the reserved slot
+    // Clear the booking reference from the slot.
+    // The slot's physical status remains unchanged (it's 'available' since we no longer
+    // set it to 'reserved' on booking creation — only 'occupied' on check-in).
     if (booking.assignedSlot) {
       const releasedSlot = await ParkingSlot.findByIdAndUpdate(
         booking.assignedSlot,
-        { status: 'available', currentBooking: null },
+        { currentBooking: null },
         { new: true }
       );
-      // Emit real-time update
+      // Emit real-time update so clients know the booking was cancelled for this slot
       try {
         emitSlotUpdate(booking.parkingLot.toString(), {
           slotId: booking.assignedSlot,
           slotCode: releasedSlot?.slotCode,
-          status: 'available',
+          status: releasedSlot?.status || 'available', // real DB status
+          bookingCancelled: true,
           floorId: booking.floor,
           zoneId: booking.zone,
         });

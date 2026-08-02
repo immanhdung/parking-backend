@@ -73,9 +73,11 @@ const scanNoShowBookings = async () => {
 
     // Release reserved parking slots for each no-show booking
     if (slotIdsToRelease.length) {
+      // Since slots are no longer set to 'reserved' on booking creation,
+      // we just need to clear the currentBooking reference.
       await ParkingSlot.updateMany(
         { _id: { $in: slotIdsToRelease } },
-        { $set: { status: 'available', currentBooking: null } }
+        { $set: { currentBooking: null } }
       );
     }
 

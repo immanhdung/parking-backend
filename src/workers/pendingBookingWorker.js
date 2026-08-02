@@ -60,9 +60,11 @@ const scanPendingBookings = async () => {
       .map(b => b.assignedSlot);
 
     if (slotIds.length) {
+      // Since slots are no longer set to 'reserved' on booking creation,
+      // we just need to clear the currentBooking reference.
       await ParkingSlot.updateMany(
         { _id: { $in: slotIds } },
-        { $set: { status: 'available', currentBooking: null } }
+        { $set: { currentBooking: null } }
       );
     }
 

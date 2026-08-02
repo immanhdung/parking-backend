@@ -1,4 +1,5 @@
 const ParkingSlot = require('./parkingSlot.model');
+const Booking = require('../bookings/booking.model');
 const Floor = require('../floors/floor.model');
 const Zone = require('../zones/zone.model');
 const ApiError = require('../../utils/ApiError');
@@ -186,9 +187,25 @@ class ParkingSlotService {
   }
 
   /**
-   * Get realtime slot map for a floor
+   * Get realtime slot map for a floor.
+   *
+   * @param {string} floorId
+   * @param {Object} options
+   * @param {Date|null} options.wantedStart  - The start of the time window the customer wants to book.
+   *                                           When provided, any slot whose booking overlaps this window
+   *                                           is returned with computedStatus = 'reserved'.
+   * @param {Date|null} options.wantedEnd    - The end of the time window the customer wants to book.
+   *
+   * If wantedStart/wantedEnd are NOT given (e.g. Staff Live Map), we fall back to
+   * a 30-minute forward window so the map shows upcoming bookings as "Reserved" soon.
    */
-  async getFloorSlotMap(floorId) {
+  async getFloorSlotMap(floorId, { wantedStart = null, wantedEnd = null } = {}) {
+    const now = new Date();
+
+    // Staff Live Map fallback: show 'reserved' for bookings starting within 30 min
+    const STAFF_WINDOW_MS = 30 * 60 * 1000;
+    const staffWindowEnd = new Date(now.getTime() + STAFF_WINDOW_MS);
+
     const slots = await ParkingSlot.find({ floor: floorId })
       .populate('vehicleType', 'name code icon color')
       .populate({
@@ -203,7 +220,53 @@ class ParkingSlotService {
       })
       .sort('slotCode');
 
-    return slots;
+    const result = await Promise.all(slots.map(async (slot) => {
+      const slotObj = slot.toObject();
+      slotObj.computedStatus = slotObj.status; // default: same as real DB status
+
+      if (slotObj.status === 'available') {
+        // Fetch ALL upcoming pending/approved bookings for this slot
+        const upcomingBookings = await Booking.find({
+          assignedSlot: slot._id,
+          status: { $in: ['pending', 'approved'] },
+        }).sort({ scheduledDate: 1, startTime: 1 }).lean();
+
+        for (const upcoming of upcomingBookings) {
+          const [sH, sM] = upcoming.startTime.split(':').map(Number);
+          let [eH, eM] = upcoming.endTime.split(':').map(Number);
+          if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
+
+          const bookingStart = new Date(upcoming.scheduledDate);
+          bookingStart.setHours(sH, sM, 0, 0);
+          const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
+          const bookingEnd = new Date(bookingStart.getTime() + durationMs);
+
+          let isConflict = false;
+
+          if (wantedStart && wantedEnd) {
+            // Customer booking flow: check exact time overlap with their chosen window
+            // Touching boundaries (wantedEnd === bookingStart) is NOT a conflict
+            isConflict = wantedStart < bookingEnd && wantedEnd > bookingStart;
+          } else {
+            // Staff Live Map: flag as reserved if booking starts within the next 30 min
+            isConflict = bookingStart >= now && bookingStart <= staffWindowEnd;
+          }
+
+          if (isConflict) {
+            slotObj.computedStatus = 'reserved';
+            slotObj.upcomingBooking = {
+              bookingCode: upcoming.bookingCode,
+              startTime: upcoming.startTime,
+              endTime: upcoming.endTime,
+            };
+            break; // one conflict is enough
+          }
+        }
+      }
+      return slotObj;
+    }));
+
+    return result;
   }
 
   /**
