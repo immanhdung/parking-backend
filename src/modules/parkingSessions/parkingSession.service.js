@@ -333,11 +333,12 @@ class ParkingSessionService {
       advancePayment: booking && booking.paymentStatus === 'paid' ? booking.estimatedFee : 0,
     });
 
-    // Update slot status to occupied
+    // Update slot status to occupied; keep currentBooking so the slot-map can
+    // determine when the current occupant is scheduled to leave.
     await ParkingSlot.findByIdAndUpdate(slot._id, {
       status: 'occupied',
       currentSession: session._id,
-      currentBooking: null,
+      currentBooking: booking?._id ?? null,
     });
 
     // Update booking status

@@ -79,7 +79,8 @@ class ParkingSlotController {
   });
 
   lockSlot = asyncHandler(async (req, res) => {
-    const result = await parkingSlotService.lockSlot(req.params.id, req.user._id);
+    const { wantedStart } = req.body;
+    const result = await parkingSlotService.lockSlot(req.params.id, req.user._id, wantedStart || null);
     ApiResponse.success(res, 'Slot locked successfully.', result);
   });
 

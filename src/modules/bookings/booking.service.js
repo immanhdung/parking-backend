@@ -268,8 +268,47 @@ class BookingService {
         .populate('floor', 'floorNumber')
         .populate('zone', 'name');
 
-      if (!recommendedSlot || recommendedSlot.status === 'occupied' || recommendedSlot.status === 'maintenance') {
+      if (!recommendedSlot || recommendedSlot.status === 'maintenance') {
         throw ApiError.badRequest('The selected slot is not available. Please select another slot.');
+      }
+
+      // If the slot is occupied, check if the current occupant will have left before
+      // this new booking starts (accounting for the 15-min checkout buffer).
+      if (recommendedSlot.status === 'occupied') {
+        const CHECKOUT_BUFFER_MS = 15 * 60 * 1000;
+        let occupantEndOk = false;
+
+        // Resolve occupant's booking end from slot.currentBooking or slot.currentSession.booking
+        const occupantBookingId = recommendedSlot.currentBooking;
+        let occupantBooking = occupantBookingId
+          ? await Booking.findById(occupantBookingId).select('scheduledDate startTime endTime').lean()
+          : null;
+
+        if (!occupantBooking) {
+          // Fallback: get from currentSession's booking
+          const ParkingSession = require('../parkingSessions/parkingSession.model');
+          const sess = recommendedSlot.currentSession
+            ? await ParkingSession.findById(recommendedSlot.currentSession)
+                .populate('booking', 'scheduledDate startTime endTime')
+                .lean()
+            : null;
+          occupantBooking = sess?.booking || null;
+        }
+
+        if (occupantBooking?.endTime && occupantBooking?.scheduledDate) {
+          const [sh, sm] = (occupantBooking.startTime || '00:00').split(':').map(Number);
+          const [eh, em] = occupantBooking.endTime.split(':').map(Number);
+          const plainEnd = new Date(occupantBooking.scheduledDate);
+          plainEnd.setHours(eh, em, 0, 0);
+          if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1); // cross-midnight
+          const effectiveOccupantEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+          occupantEndOk = effectiveOccupantEnd <= finalEntryTime;
+        }
+
+        if (!occupantEndOk) {
+          throw ApiError.badRequest('The selected slot is currently occupied. Please select another slot.');
+        }
+        // Occupant will be gone before new booking starts — allow it
       }
 
       // Check if locked by someone else

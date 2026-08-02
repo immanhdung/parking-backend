@@ -210,8 +210,11 @@ class ParkingSlotService {
       .populate('vehicleType', 'name code icon color')
       .populate({
         path: 'currentSession',
-        select: 'vehicleInfo entryTime user monthlyPass status',
-        populate: { path: 'user', select: 'fullName phone' }
+        select: 'vehicleInfo entryTime user monthlyPass status booking',
+        populate: [
+          { path: 'user', select: 'fullName phone' },
+          { path: 'booking', select: 'scheduledDate startTime endTime bookingCode' },
+        ]
       })
       .populate({
         path: 'currentBooking',
@@ -220,56 +223,120 @@ class ParkingSlotService {
       })
       .sort('slotCode');
 
+    const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000;
+    const CHECKOUT_BUFFER_MS      = 15 * 60 * 1000;
+
+    /**
+     * Check a list of upcoming bookings for conflict with [wantedStart, wantedEnd].
+     * Returns the first conflicting booking or null.
+     */
+    const findConflictingBooking = (upcomingBookings) => {
+      for (const upcoming of upcomingBookings) {
+        const [sH, sM] = upcoming.startTime.split(':').map(Number);
+        let [eH, eM] = upcoming.endTime.split(':').map(Number);
+        if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
+
+        const bookingStart = new Date(upcoming.scheduledDate);
+        bookingStart.setHours(sH, sM, 0, 0);
+        const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
+        const bookingEnd = new Date(bookingStart.getTime() + durationMs);
+
+        const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
+        const effectiveEnd   = new Date(bookingEnd.getTime()   + CHECKOUT_BUFFER_MS);
+
+        if (wantedStart < effectiveEnd && wantedEnd > effectiveStart) {
+          return upcoming;
+        }
+      }
+      return null;
+    };
+
     const result = await Promise.all(slots.map(async (slot) => {
       const slotObj = slot.toObject();
       slotObj.computedStatus = slotObj.status; // default: same as real DB status
 
+      // ── Case 1: physically available → check upcoming booking conflicts ──
       if (slotObj.status === 'available') {
-        // Fetch ALL upcoming pending/approved bookings for this slot
         const upcomingBookings = await Booking.find({
           assignedSlot: slot._id,
           status: { $in: ['pending', 'approved'] },
         }).sort({ scheduledDate: 1, startTime: 1 }).lean();
 
-        for (const upcoming of upcomingBookings) {
-          const [sH, sM] = upcoming.startTime.split(':').map(Number);
-          let [eH, eM] = upcoming.endTime.split(':').map(Number);
-          if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
-
-          const bookingStart = new Date(upcoming.scheduledDate);
-          bookingStart.setHours(sH, sM, 0, 0);
-          const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
-          const bookingEnd = new Date(bookingStart.getTime() + durationMs);
-
-          // Effective window = [bookingStart - 15min,  bookingEnd + 15min]
-          // • 15 min BEFORE start  → early check-in buffer
-          // • 15 min AFTER end     → checkout/exit buffer
-          const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000;
-          const CHECKOUT_BUFFER_MS      = 15 * 60 * 1000;
-          const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
-          const effectiveEnd   = new Date(bookingEnd.getTime()   + CHECKOUT_BUFFER_MS);
-
-          let isConflict = false;
-
-          if (wantedStart && wantedEnd) {
-            // Customer booking flow: any overlap with the effective window is a conflict
-            isConflict = wantedStart < effectiveEnd && wantedEnd > effectiveStart;
-          } else {
-            // Staff Live Map: flag as reserved if effective window overlaps "now → now+30min"
-            isConflict = effectiveStart >= now && effectiveStart <= staffWindowEnd;
-          }
-
-          if (isConflict) {
+        if (wantedStart && wantedEnd) {
+          // Customer booking flow: check effective window overlap
+          const conflict = findConflictingBooking(upcomingBookings);
+          if (conflict) {
             slotObj.computedStatus = 'reserved';
             slotObj.upcomingBooking = {
-              bookingCode: upcoming.bookingCode,
-              startTime: upcoming.startTime,
-              endTime: upcoming.endTime,
+              bookingCode: conflict.bookingCode,
+              startTime:   conflict.startTime,
+              endTime:     conflict.endTime,
             };
-            break; // one conflict is enough
+          }
+        } else {
+          // Staff Live Map: flag as reserved if effective start is within 30 min
+          for (const upcoming of upcomingBookings) {
+            const [sH, sM] = upcoming.startTime.split(':').map(Number);
+            const bookingStart = new Date(upcoming.scheduledDate);
+            bookingStart.setHours(sH, sM, 0, 0);
+            const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
+            if (effectiveStart >= now && effectiveStart <= staffWindowEnd) {
+              slotObj.computedStatus = 'reserved';
+              slotObj.upcomingBooking = {
+                bookingCode: upcoming.bookingCode,
+                startTime:   upcoming.startTime,
+                endTime:     upcoming.endTime,
+              };
+              break;
+            }
           }
         }
       }
+
+      // ── Case 2: physically OCCUPIED but customer wants a FUTURE window ──
+      // Check if the current session's booking ends before wantedStart (+ checkout buffer).
+      // Source priority: slot.currentSession.booking > slot.currentBooking (for older records).
+      if (slotObj.status === 'occupied' && wantedStart && wantedEnd) {
+        // Resolve the booking attached to the current occupancy
+        const occupantBooking =
+          slotObj.currentSession?.booking ||   // populated from session (preferred)
+          slotObj.currentBooking;              // fallback: direct slot field
+
+        if (occupantBooking?.endTime && occupantBooking?.scheduledDate) {
+          // Build absolute end time, handling cross-midnight
+          const [sh, sm] = (occupantBooking.startTime || '00:00').split(':').map(Number);
+          const [eh, em] = occupantBooking.endTime.split(':').map(Number);
+          const plainEnd = new Date(occupantBooking.scheduledDate);
+          plainEnd.setHours(eh, em, 0, 0);
+          if (eh < sh || (eh === sh && em <= sm)) {
+            plainEnd.setDate(plainEnd.getDate() + 1); // cross-midnight
+          }
+          const effectiveSessionEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+
+          if (effectiveSessionEnd <= wantedStart) {
+            // Car will have left by wantedStart — check for OTHER future booking conflicts
+            const upcomingBookings = await Booking.find({
+              assignedSlot: slot._id,
+              status: { $in: ['pending', 'approved'] },
+            }).sort({ scheduledDate: 1, startTime: 1 }).lean();
+
+            const conflict = findConflictingBooking(upcomingBookings);
+            if (conflict) {
+              slotObj.computedStatus = 'reserved';
+              slotObj.upcomingBooking = {
+                bookingCode: conflict.bookingCode,
+                startTime:   conflict.startTime,
+                endTime:     conflict.endTime,
+              };
+            } else {
+              slotObj.computedStatus = 'available';
+            }
+          }
+          // else: car still there during wanted window → keep 'occupied'
+        }
+        // If no booking info (anonymous walk-in), can't determine end time → keep 'occupied'
+      }
+
       return slotObj;
     }));
 
@@ -347,7 +414,7 @@ class ParkingSlotService {
   /**
    * Temporarily lock a slot so other users can't select it (3 min TTL)
    */
-  async lockSlot(slotId, userId) {
+  async lockSlot(slotId, userId, wantedStart = null) {
     const slot = await ParkingSlot.findById(slotId);
     if (!slot) throw ApiError.notFound('Parking slot not found.');
 
@@ -363,9 +430,51 @@ class ParkingSlotService {
       throw ApiError.conflict(`Slot is being selected by another user. Please try again in ${secsLeft}s.`);
     }
 
-    // If slot is already reserved or occupied
+    // If slot is already occupied or reserved, check if it can be booked for a future window.
+    // For occupied slots: allow if the current occupant's booking ends before wantedStart.
     if (slot.status === 'occupied' || slot.status === 'reserved') {
-      throw ApiError.badRequest(`Slot is ${slot.status} and cannot be selected.`);
+      // If the caller provides wantedStart, check if the current occupant leaves in time.
+      if (wantedStart) {
+        const CHECKOUT_BUFFER_MS = 15 * 60 * 1000;
+        // Try to resolve end time from currentBooking (set since the fix) or currentSession's booking
+        let canProceed = false;
+        const currentBooking = slot.currentBooking
+          ? await require('../bookings/booking.model').findById(slot.currentBooking).select('scheduledDate startTime endTime').lean()
+          : null;
+        if (currentBooking?.endTime && currentBooking?.scheduledDate) {
+          const [sh, sm] = (currentBooking.startTime || '00:00').split(':').map(Number);
+          const [eh, em] = currentBooking.endTime.split(':').map(Number);
+          const plainEnd = new Date(currentBooking.scheduledDate);
+          plainEnd.setHours(eh, em, 0, 0);
+          if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1);
+          const effectiveEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+          canProceed = effectiveEnd <= new Date(wantedStart);
+        } else {
+          // Try via currentSession's booking
+          const ParkingSession = require('../parkingSessions/parkingSession.model');
+          const sess = slot.currentSession
+            ? await ParkingSession.findById(slot.currentSession)
+                .populate('booking', 'scheduledDate startTime endTime')
+                .lean()
+            : null;
+          const sessBooking = sess?.booking;
+          if (sessBooking?.endTime && sessBooking?.scheduledDate) {
+            const [sh, sm] = (sessBooking.startTime || '00:00').split(':').map(Number);
+            const [eh, em] = sessBooking.endTime.split(':').map(Number);
+            const plainEnd = new Date(sessBooking.scheduledDate);
+            plainEnd.setHours(eh, em, 0, 0);
+            if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1);
+            const effectiveEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+            canProceed = effectiveEnd <= new Date(wantedStart);
+          }
+        }
+        if (!canProceed) {
+          throw ApiError.badRequest(`Slot is ${slot.status} and cannot be selected for this time window.`);
+        }
+        // Slot will be free — proceed with lock
+      } else {
+        throw ApiError.badRequest(`Slot is ${slot.status} and cannot be selected.`);
+      }
     }
 
     const lockedUntil = new Date(now.getTime() + LOCK_DURATION_MS);
