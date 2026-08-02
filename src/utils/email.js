@@ -105,9 +105,36 @@ const sendBookingConfirmation = async (user, booking) => {
   });
 };
 
+const sendShiftAssignmentEmail = async (user, shiftData) => {
+  const loginUrl = `${process.env.CLIENT_URL}/login`;
+  await sendEmail({
+    to: user.email,
+    subject: `New Shift Assigned - Parking System`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">New Shift Assigned!</h2>
+        <p>Hi ${user.fullName},</p>
+        <p>A manager has assigned a new work shift to you.</p>
+        <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
+          <p><strong>Date:</strong> ${shiftData.date}</p>
+          <p><strong>Shift:</strong> ${shiftData.shiftType.toUpperCase()}</p>
+        </div>
+        <p>Please log in to your account and check your Work Schedule.</p>
+        <a href="${loginUrl}" 
+           style="display: inline-block; padding: 12px 24px; background-color: #2563eb; 
+                  color: white; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+          Login to System
+        </a>
+        <p>If you cannot make it to this shift, please request a leave through the system as soon as possible.</p>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
   sendResetPasswordEmail,
   sendBookingConfirmation,
+  sendShiftAssignmentEmail,
 };

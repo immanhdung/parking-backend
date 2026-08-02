@@ -1,7 +1,9 @@
 const WorkSchedule = require('./workSchedule.model');
+const User = require('../users/user.model');
 const ApiError = require('../../utils/ApiError');
 const mongoose = require('mongoose');
 const dayjs = require('dayjs');
+const { sendShiftAssignmentEmail } = require('../../utils/email');
 
 exports.createOrUpdate = async (req, res, next) => {
   try {
@@ -60,7 +62,7 @@ exports.createOrUpdate = async (req, res, next) => {
         allSchedules.forEach(sched => {
           if (sched.staff.toString() === req.user._id.toString()) return; 
           sched.shifts.forEach(sh => {
-            if (sh.date === dateStr && sh.shiftType === shiftType && sh.status !== 'rejected') {
+            if (sh.date === dateStr && sh.shiftType === shiftType && sh.status !== 'rejected' && sh.status !== 'leave_approved') {
               count++;
             }
           });
@@ -141,6 +143,18 @@ exports.getMySchedules = async (req, res, next) => {
     if (parkingLotId) filter.parkingLot = parkingLotId;
 
     const schedules = await WorkSchedule.find(filter).sort('-monthYear');
+
+    // Auto-fix inconsistent statuses
+    for (const schedule of schedules) {
+      if (schedule.status === 'pending' || schedule.status === 'rejected') {
+        const hasPending = schedule.shifts.some(s => s.status === 'pending');
+        if (!hasPending && schedule.shifts.length > 0) {
+          schedule.status = 'approved';
+          await schedule.save();
+        }
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: schedules
@@ -165,7 +179,7 @@ exports.getAvailability = async (req, res, next) => {
     const counts = {};
     allSchedules.forEach(sched => {
       sched.shifts.forEach(s => {
-        if (s.status !== 'rejected') {
+        if (s.status !== 'rejected' && s.status !== 'leave_approved') {
           const key = `${s.date}_${s.shiftType}`;
           counts[key] = (counts[key] || 0) + 1;
         }
@@ -213,6 +227,17 @@ exports.getManagerSchedules = async (req, res, next) => {
       .populate('staff', 'fullName email phone')
       .populate('parkingLot', 'name code')
       .sort('-monthYear');
+
+    // Auto-fix inconsistent statuses
+    for (const schedule of schedules) {
+      if (schedule.status === 'pending' || schedule.status === 'rejected') {
+        const hasPending = schedule.shifts.some(s => s.status === 'pending');
+        if (!hasPending && schedule.shifts.length > 0) {
+          schedule.status = 'approved';
+          await schedule.save();
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -262,12 +287,95 @@ exports.updateStatus = async (req, res, next) => {
       });
     }
 
+    // Auto-update parent status if there are no pending shifts left
+    if (schedule.status === 'pending' || schedule.status === 'rejected') {
+      const hasPending = schedule.shifts.some(s => s.status === 'pending');
+      if (!hasPending && schedule.shifts.length > 0) {
+        schedule.status = 'approved';
+      }
+    }
+
     await schedule.save();
 
     res.status(200).json({
       success: true,
       data: schedule
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.requestLeave = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { date, shiftType, leaveReason } = req.body;
+
+    const schedule = await WorkSchedule.findOne({ _id: id, staff: req.user._id });
+    if (!schedule) {
+      return next(ApiError.notFound('Schedule not found'));
+    }
+
+    const shift = schedule.shifts.find(s => s.date === date && s.shiftType === shiftType);
+    if (!shift) {
+      return next(ApiError.notFound('Shift not found'));
+    }
+
+    if (shift.status !== 'approved' && shift.status !== 'published') {
+      return next(ApiError.badRequest('Can only request leave for approved or published shifts'));
+    }
+
+    shift.status = 'leave_pending';
+    shift.leaveReason = leaveReason;
+
+    await schedule.save();
+
+    res.status(200).json({
+      success: true,
+      data: schedule
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.assignStaffToShift = async (req, res, next) => {
+  try {
+    const { parkingLotId, staffId, date, shiftType } = req.body;
+    if (!parkingLotId || !staffId || !date || !shiftType) {
+      return next(ApiError.badRequest('Missing required fields'));
+    }
+
+    const monthYear = date.substring(0, 7); 
+    let schedule = await WorkSchedule.findOne({ staff: staffId, parkingLot: parkingLotId, monthYear });
+    
+    if (!schedule) {
+      schedule = new WorkSchedule({ staff: staffId, parkingLot: parkingLotId, monthYear, shifts: [], status: 'approved' });
+    }
+
+    const existing = schedule.shifts.find(s => s.date === date && s.shiftType === shiftType);
+    if (existing) {
+       if (existing.status === 'approved' || existing.status === 'published' || existing.status === 'pending') {
+          return next(ApiError.badRequest('Staff is already assigned or requested this shift'));
+       }
+       existing.status = 'approved';
+    } else {
+       schedule.shifts.push({ date, shiftType, status: 'approved' });
+    }
+    
+    await schedule.save();
+
+    // Send email notification
+    try {
+      const staffUser = await User.findById(staffId);
+      if (staffUser && staffUser.email) {
+        await sendShiftAssignmentEmail(staffUser, { date, shiftType });
+      }
+    } catch (emailErr) {
+      console.error('Failed to send shift assignment email:', emailErr);
+    }
+
+    res.status(200).json({ success: true, data: schedule });
   } catch (error) {
     next(error);
   }

@@ -24,10 +24,11 @@ const workScheduleSchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'approved', 'rejected', 'published', 'leave_pending', 'leave_approved'],
       default: 'pending'
     },
-    managerNote: String
+    managerNote: String,
+    leaveReason: String
   }],
   status: {
     type: String,
