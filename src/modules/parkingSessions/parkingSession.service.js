@@ -485,16 +485,11 @@ class ParkingSessionService {
 
         // Early Arrival Fee (if they enter before the scheduled start time)
         if (session.entryTime < scheduledStart) {
-          const earlyMs = scheduledStart - session.entryTime;
-          const earlyHours = earlyMs / (1000 * 60 * 60);
-          // Grace period check (default to 15 mins)
-          if (earlyHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
-            const earlyCalc = calculateOvertimeFee(session.entryTime, scheduledStart, session.vehicleType.pricing, 'early');
-            overtimeFee += earlyCalc.fee;
-            surchargeLogs = surchargeLogs.concat(earlyCalc.surchargeLogs);
-            overtimeBlocks += earlyCalc.overtimeBlocks;
-            isOvertime = true;
-          }
+          const earlyCalc = calculateOvertimeFee(session.entryTime, scheduledStart, session.vehicleType.pricing, 'early');
+          overtimeFee += earlyCalc.fee;
+          surchargeLogs = surchargeLogs.concat(earlyCalc.surchargeLogs);
+          overtimeBlocks += earlyCalc.overtimeBlocks;
+          isOvertime = true;
         }
 
         // Late Departure / Overtime Fee (if they exit after the scheduled end time)
@@ -502,13 +497,12 @@ class ParkingSessionService {
           const overtimeMs = exitTime - scheduledEnd;
           const lateHours = overtimeMs / (1000 * 60 * 60);
           overtimeHours = lateHours;
-          if (lateHours > (session.parkingLot?.settings?.overtimeGracePeriodMinutes || 15) / 60) {
-            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
-            overtimeFee += overtimeCalc.fee;
-            surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
-            overtimeBlocks += overtimeCalc.overtimeBlocks;
-            isOvertime = true;
-          }
+          
+          const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
+          overtimeFee += overtimeCalc.fee;
+          surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
+          overtimeBlocks += overtimeCalc.overtimeBlocks;
+          isOvertime = true;
         }
       }
     } else {
