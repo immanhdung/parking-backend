@@ -31,6 +31,55 @@ const { startPendingBookingWorker, stopPendingBookingWorker } = require('./worke
 const { startNoShowBookingWorker, stopNoShowBookingWorker } = require('./workers/noShowBookingWorker');
 
 // ========================
+// STARTUP MIGRATION
+// ========================
+/**
+ * One-time sync: recalculate totalSlots / availableSlots / occupiedSlots
+ * for every ParkingLot from the actual ParkingSlot collection.
+ * Runs once on each server boot so stale counts (e.g. from newly created lots)
+ * are always corrected automatically — no manual button needed.
+ */
+async function syncAllLotSlotCounts() {
+  try {
+    const mongoose = require('mongoose');
+    const ParkingLot = require('./modules/parkingLots/parkingLot.model');
+    const ParkingSlot = require('./modules/parkingSlots/parkingSlot.model');
+
+    const lots = await ParkingLot.find({ isDeleted: { $ne: true } }).select('_id name').lean();
+    if (lots.length === 0) return;
+
+    let updated = 0;
+    for (const lot of lots) {
+      const result = await ParkingSlot.aggregate([
+        {
+          $match: {
+            parkingLot: new mongoose.Types.ObjectId(lot._id),
+            isDeleted: { $ne: true },
+          },
+        },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]);
+
+      const counts = { total: 0, available: 0, occupied: 0 };
+      result.forEach(r => {
+        counts[r._id] = r.count;
+        counts.total += r.count;
+      });
+
+      await ParkingLot.findByIdAndUpdate(lot._id, {
+        totalSlots: counts.total,
+        availableSlots: counts.available || 0,
+        occupiedSlots: counts.occupied || 0,
+      });
+      updated++;
+    }
+    logger.info(`✅ Synced slot counts for ${updated} parking lot(s)`);
+  } catch (err) {
+    logger.warn(`⚠️  Slot count sync failed (non-fatal): ${err.message}`);
+  }
+}
+
+// ========================
 // APP SETUP
 // ========================
 const app = express();
@@ -189,6 +238,9 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
+
+    // Sync slot counts for all lots on startup (fixes stale totalSlots/availableSlots)
+    await syncAllLotSlotCounts();
 
     httpServer.listen(PORT, () => {
       logger.info(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);

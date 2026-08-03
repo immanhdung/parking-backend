@@ -2,6 +2,7 @@ const ParkingSlot = require('./parkingSlot.model');
 const Booking = require('../bookings/booking.model');
 const Floor = require('../floors/floor.model');
 const Zone = require('../zones/zone.model');
+const ParkingLot = require('../parkingLots/parkingLot.model');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { suggestOptimalSlot } = require('../../utils/helpers');
@@ -80,9 +81,10 @@ class ParkingSlotService {
       slotCode: data.slotCode.toUpperCase(),
     });
 
-    // Update floor and zone slot counts
+    // Update floor, zone and lot slot counts
     await this._updateFloorSlotCounts(data.floor);
     if (data.zone) await this._updateZoneSlotCounts(data.zone);
+    await this._updateLotSlotCounts(data.parkingLot);
 
     return slot.populate(['floor', 'zone', 'vehicleType']);
   }
@@ -128,10 +130,11 @@ class ParkingSlotService {
 
     await slot.save();
 
-    // Sync floor counts if status changed
+    // Sync floor, zone and lot counts if status changed
     if (oldStatus !== status) {
       await this._updateFloorSlotCounts(slot.floor);
       if (slot.zone) await this._updateZoneSlotCounts(slot.zone);
+      await this._updateLotSlotCounts(slot.parkingLot);
     }
 
     return slot;
@@ -147,12 +150,14 @@ class ParkingSlotService {
 
     const floorId = slot.floor;
     const zoneId = slot.zone;
+    const lotId = slot.parkingLot;
     slot.isDeleted = true;
     slot.deletedAt = new Date();
     await slot.save();
 
     await this._updateFloorSlotCounts(floorId);
     if (zoneId) await this._updateZoneSlotCounts(zoneId);
+    await this._updateLotSlotCounts(lotId);
     return { message: 'Slot deleted.' };
   }
 
@@ -408,6 +413,42 @@ class ParkingSlotService {
     await Zone.findByIdAndUpdate(zoneId, {
       totalSlots: counts.total,
       availableSlots: counts.available,
+    });
+  }
+
+  /**
+   * Sync slot counts on ParkingLot model (totalSlots, availableSlots, occupiedSlots)
+   */
+  async _updateLotSlotCounts(lotId) {
+    if (!lotId) return;
+    const mongoose = require('mongoose');
+    const result = await ParkingSlot.aggregate([
+      {
+        $match: {
+          parkingLot: mongoose.Types.ObjectId.isValid(lotId)
+            ? new mongoose.Types.ObjectId(lotId)
+            : lotId,
+          isDeleted: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = { total: 0, available: 0, occupied: 0 };
+    result.forEach(r => {
+      counts[r._id] = r.count;
+      counts.total += r.count;
+    });
+
+    await ParkingLot.findByIdAndUpdate(lotId, {
+      totalSlots: counts.total,
+      availableSlots: counts.available || 0,
+      occupiedSlots: counts.occupied || 0,
     });
   }
 
