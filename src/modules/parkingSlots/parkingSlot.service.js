@@ -72,13 +72,17 @@ class ParkingSlotService {
       }
     }
 
-    const existing = await ParkingSlot.findOne({
+    const query = {
       parkingLot: data.parkingLot,
       floor: data.floor,
       slotCode: data.slotCode.toUpperCase(),
       isDeleted: { $ne: true },
-    });
-    if (existing) throw ApiError.conflict(`Slot code '${data.slotCode}' already exists on this floor.`);
+    };
+    if (data.zone) {
+      query.zone = data.zone;
+    }
+    const existing = await ParkingSlot.findOne(query);
+    if (existing) throw ApiError.conflict(`Slot code '${data.slotCode}' already exists in this zone/floor.`);
 
     const slot = await ParkingSlot.create({
       ...data,
