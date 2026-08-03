@@ -230,20 +230,25 @@ class PaymentService {
    * Initiate bank transfer payment with VietQR / SEPay QR code for SESSION CHECKOUT
    * Creates a pending payment and returns QR code URL for customer to scan
    */
-  async initiateBankTransfer(sessionId, staffId) {
+  async initiateBankTransfer(sessionId, staffId, requestedAmount = null) {
     const { generateTransferContent } = require('../../utils/helpers');
     const logger = require('../../utils/logger');
 
     const session = await ParkingSession.findById(sessionId);
     if (!session) throw ApiError.notFound('Parking session not found.');
-    if (session.status !== 'completed') {
-      throw ApiError.badRequest('Session must be completed (checked out) before payment.');
-    }
     if (session.paymentStatus === 'paid') {
       throw ApiError.badRequest('Session is already paid.');
     }
 
-    const amount = session.totalFee;
+    // Determine the amount based on whether the session is completed or if an explicit amount is provided
+    let amount = requestedAmount;
+    if (!amount) {
+      if (session.status !== 'completed') {
+        throw ApiError.badRequest('Session must be completed (checked out) before payment, or an explicit amount must be provided.');
+      }
+      amount = session.totalFee;
+    }
+
     if (!amount || amount <= 0) {
       throw ApiError.badRequest('Invalid payment amount.');
     }
@@ -546,6 +551,7 @@ class PaymentService {
         io.emit('paymentConfirmed', {
           paymentId: payment._id,
           invoiceCode: payment.invoiceCode,
+          sessionId: session ? session._id : payment.parkingSession,
           amount: payment.amount,
           transferContent: transferContentCode,
         });

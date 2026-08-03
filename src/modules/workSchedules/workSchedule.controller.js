@@ -51,16 +51,16 @@ exports.createOrUpdate = async (req, res, next) => {
           shiftsToAdd.push({ ...s, status: 'pending' });
         }
       });
-      
+
       const ParkingLot = require('../parkingLots/parkingLot.model');
       const lot = await ParkingLot.findById(parkingLotId);
       const shiftQuotas = lot?.settings?.shiftQuotas || { morning: 2, afternoon: 2, night: 2 };
-      
+
       const allSchedules = await WorkSchedule.find({ parkingLot: parkingLotId, monthYear });
       const getStaffCountForShift = (dateStr, shiftType) => {
         let count = 0;
         allSchedules.forEach(sched => {
-          if (sched.staff.toString() === req.user._id.toString()) return; 
+          if (sched.staff.toString() === req.user._id.toString()) return;
           sched.shifts.forEach(sh => {
             if (sh.date === dateStr && sh.shiftType === shiftType && sh.status !== 'rejected' && sh.status !== 'leave_approved') {
               count++;
@@ -74,7 +74,7 @@ exports.createOrUpdate = async (req, res, next) => {
         const currentCount = getStaffCountForShift(s.date, s.shiftType);
         const maxQuota = shiftQuotas[s.shiftType] || 2;
         if (currentCount >= maxQuota) {
-           return next(ApiError.badRequest(`Shift ${s.shiftType} on ${s.date} is already full (Max ${maxQuota} staff).`));
+          return next(ApiError.badRequest(`Shift ${s.shiftType} on ${s.date} is already full (Max ${maxQuota} staff).`));
         }
       }
 
@@ -96,7 +96,7 @@ exports.createOrUpdate = async (req, res, next) => {
       const ParkingLot = require('../parkingLots/parkingLot.model');
       const lot = await ParkingLot.findById(parkingLotId);
       const shiftQuotas = lot?.settings?.shiftQuotas || { morning: 2, afternoon: 2, night: 2 };
-      
+
       const allSchedules = await WorkSchedule.find({ parkingLot: parkingLotId, monthYear });
       const getStaffCountForShift = (dateStr, shiftType) => {
         let count = 0;
@@ -114,7 +114,7 @@ exports.createOrUpdate = async (req, res, next) => {
         const currentCount = getStaffCountForShift(s.date, s.shiftType);
         const maxQuota = shiftQuotas[s.shiftType] || 2;
         if (currentCount >= maxQuota) {
-           return next(ApiError.badRequest(`Shift ${s.shiftType} on ${s.date} is already full (Max ${maxQuota} staff).`));
+          return next(ApiError.badRequest(`Shift ${s.shiftType} on ${s.date} is already full (Max ${maxQuota} staff).`));
         }
       }
 
@@ -173,9 +173,9 @@ exports.getAvailability = async (req, res, next) => {
     const ParkingLot = require('../parkingLots/parkingLot.model');
     const lot = await ParkingLot.findById(parkingLotId);
     const shiftQuotas = lot?.settings?.shiftQuotas || { morning: 2, afternoon: 2, night: 2 };
-    
+
     const allSchedules = await WorkSchedule.find({ parkingLot: parkingLotId, monthYear });
-    
+
     const counts = {};
     allSchedules.forEach(sched => {
       sched.shifts.forEach(s => {
@@ -185,7 +185,7 @@ exports.getAvailability = async (req, res, next) => {
         }
       });
     });
-    
+
     const fullShifts = [];
     Object.keys(counts).forEach(key => {
       const shiftType = key.split('_')[1];
@@ -194,7 +194,7 @@ exports.getAvailability = async (req, res, next) => {
         fullShifts.push(key);
       }
     });
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -346,23 +346,23 @@ exports.assignStaffToShift = async (req, res, next) => {
       return next(ApiError.badRequest('Missing required fields'));
     }
 
-    const monthYear = date.substring(0, 7); 
+    const monthYear = date.substring(0, 7);
     let schedule = await WorkSchedule.findOne({ staff: staffId, parkingLot: parkingLotId, monthYear });
-    
+
     if (!schedule) {
       schedule = new WorkSchedule({ staff: staffId, parkingLot: parkingLotId, monthYear, shifts: [], status: 'approved' });
     }
 
     const existing = schedule.shifts.find(s => s.date === date && s.shiftType === shiftType);
     if (existing) {
-       if (existing.status === 'approved' || existing.status === 'published' || existing.status === 'pending') {
-          return next(ApiError.badRequest('Staff is already assigned or requested this shift'));
-       }
-       existing.status = 'approved';
+      if (existing.status === 'approved' || existing.status === 'published' || existing.status === 'pending') {
+        return next(ApiError.badRequest('Staff is already assigned or requested this shift'));
+      }
+      existing.status = 'approved';
     } else {
-       schedule.shifts.push({ date, shiftType, status: 'approved' });
+      schedule.shifts.push({ date, shiftType, status: 'approved' });
     }
-    
+
     await schedule.save();
 
     // Send email notification

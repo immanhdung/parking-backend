@@ -45,8 +45,8 @@ class PaymentController {
    * Create pending payment + generate SEPay QR code URL
    */
   initiateBankTransfer = asyncHandler(async (req, res) => {
-    const { sessionId } = req.body;
-    const result = await paymentService.initiateBankTransfer(sessionId, req.user._id);
+    const { sessionId, amount } = req.body;
+    const result = await paymentService.initiateBankTransfer(sessionId, req.user._id, amount);
     ApiResponse.created(res, 'Bank transfer QR code generated.', result);
   });
 
