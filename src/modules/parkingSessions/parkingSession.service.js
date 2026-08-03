@@ -77,10 +77,11 @@ async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null
 
 class ParkingSessionService {
   async getSessions(query, user) {
-    const { page = 1, limit = 10, sort = '-entryTime', status, parkingLot, licensePlate, startDate, endDate } = query;
+    const { page = 1, limit = 10, sort = '-entryTime', status, parkingLot, licensePlate, slot, startDate, endDate } = query;
 
     const filter = {};
     if (status) filter.status = status;
+    if (slot) filter.slot = slot;
     if (licensePlate) {
       const cleanPlate = licensePlate.replace(/[^a-zA-Z0-9]/g, '');
       const regexStr = cleanPlate.split('').join('[^a-zA-Z0-9]*');
@@ -89,10 +90,13 @@ class ParkingSessionService {
 
     // Manager/Staff: only their lot
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        filter.parkingLot = user.assignedParkingLot;
-      } else if (parkingLot) {
+      const assigned = user.assignedParkingLot;
+      if (parkingLot) {
         filter.parkingLot = parkingLot;
+      } else if (Array.isArray(assigned) && assigned.length > 0) {
+        filter.parkingLot = assigned.length === 1 ? assigned[0] : { $in: assigned };
+      } else if (assigned && !Array.isArray(assigned)) {
+        filter.parkingLot = assigned;
       }
     } else if (parkingLot) {
       filter.parkingLot = parkingLot;

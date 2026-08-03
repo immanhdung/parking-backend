@@ -15,10 +15,17 @@ class PaymentService {
     if (paymentType) filter.paymentType = paymentType;
 
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        filter.parkingLot = user.assignedParkingLot;
-      } else if (parkingLot) {
+      // If frontend explicitly passes a parkingLot filter, respect it (already within their assigned scope)
+      if (parkingLot) {
         filter.parkingLot = parkingLot;
+      } else {
+        // Otherwise restrict to their assigned lots
+        const raw = user.assignedParkingLot;
+        if (Array.isArray(raw) && raw.length > 0) {
+          filter.parkingLot = raw.length === 1 ? raw[0] : { $in: raw };
+        } else if (raw && !Array.isArray(raw)) {
+          filter.parkingLot = raw;
+        }
       }
     } else if (parkingLot) {
       filter.parkingLot = parkingLot;

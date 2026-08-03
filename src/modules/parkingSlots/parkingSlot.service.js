@@ -42,6 +42,8 @@ class ParkingSlotService {
         { path: 'floor', select: 'name floorNumber' },
         { path: 'zone', select: 'name code' },
         { path: 'vehicleType', select: 'name code icon' },
+        { path: 'currentSession', select: 'vehicleInfo entryTime sessionCode' },
+        { path: 'currentBooking', select: 'bookingCode vehicleInfo scheduledDate startTime endTime user', populate: { path: 'user', select: 'fullName email' } },
       ],
     });
   }
