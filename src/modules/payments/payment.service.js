@@ -415,6 +415,145 @@ class PaymentService {
   }
 
   /**
+   * Create monthly pass + initiate bank transfer in ONE call
+   * Called when user clicks "Generate QR" on checkout page
+   * No pass is created until user actually wants to pay
+   */
+  async createMonthlyPassAndPay(data, userId) {
+    const { generateTransferContent } = require('../../utils/helpers');
+    const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
+    const VehicleType = require('../vehicleTypes/vehicleType.model');
+
+    const { parkingLotId, vehicleTypeId, licensePlate, months = 1, startDate } = data;
+
+    const vehicleType = await VehicleType.findById(vehicleTypeId);
+    if (!vehicleType) throw ApiError.notFound('Vehicle type not found.');
+
+    const pricePerMonth = vehicleType.pricing?.monthlyRate || 0;
+    if (pricePerMonth <= 0) throw ApiError.badRequest('This vehicle type does not support monthly passes.');
+
+    // Auto-cancel orphan pending passes for same vehicle+lot (cleanup)
+    await MonthlyPass.updateMany(
+      { licensePlate: licensePlate.toUpperCase(), parkingLot: parkingLotId, status: 'pending', paymentStatus: 'pending' },
+      { $set: { status: 'cancelled', isDeleted: true } }
+    );
+
+    const now = new Date();
+    const amount = pricePerMonth * parseInt(months);
+    let monthlyPass;
+
+    // ── RENEWAL: Find existing active pass valid TODAY ──────────────────────
+    const currentPass = await MonthlyPass.findOne({
+      licensePlate: licensePlate.toUpperCase(),
+      parkingLot: parkingLotId,
+      status: 'active',
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    });
+
+    if (currentPass) {
+      // Find the latest endDate across ALL active/future passes (stacked renewals)
+      const stackedPasses = await MonthlyPass.find({
+        licensePlate: licensePlate.toUpperCase(),
+        parkingLot: parkingLotId,
+        status: 'active',
+        endDate: { $gte: now },
+        _id: { $ne: currentPass._id },
+      });
+
+      // Determine the furthest endDate in the chain
+      const latestEndDate = stackedPasses.reduce(
+        (max, p) => (new Date(p.endDate) > new Date(max) ? p.endDate : max),
+        currentPass.endDate
+      );
+
+      // New endDate = latestEndDate + months
+      const newEndDate = new Date(latestEndDate);
+      newEndDate.setMonth(newEndDate.getMonth() + parseInt(months));
+      newEndDate.setHours(23, 59, 59, 999);
+
+      // Cancel all stacked future passes — they are now merged into currentPass
+      if (stackedPasses.length > 0) {
+        await MonthlyPass.updateMany(
+          {
+            licensePlate: licensePlate.toUpperCase(),
+            parkingLot: parkingLotId,
+            status: 'active',
+            _id: { $ne: currentPass._id },
+            startDate: { $gt: now },
+          },
+          { $set: { status: 'cancelled', isDeleted: true } }
+        );
+      }
+
+      // Extend the original pass's endDate
+      currentPass.endDate = newEndDate;
+      await currentPass.save();
+
+      monthlyPass = await currentPass.populate([
+        { path: 'parkingLot', select: 'name code' },
+        { path: 'vehicleType', select: 'name' }
+      ]);
+
+    } else {
+      // ── NEW PASS: first-time purchase ──────────────────────────────────────
+      let passStartDate = startDate ? new Date(startDate) : now;
+      passStartDate.setHours(0, 0, 0, 0);
+
+      const passEndDate = new Date(passStartDate);
+      passEndDate.setMonth(passEndDate.getMonth() + parseInt(months));
+      passEndDate.setDate(passEndDate.getDate() - 1);
+      passEndDate.setHours(23, 59, 59, 999);
+
+      monthlyPass = await MonthlyPass.create({
+        user: userId,
+        parkingLot: parkingLotId,
+        vehicleType: vehicleTypeId,
+        licensePlate: licensePlate.toUpperCase(),
+        startDate: passStartDate,
+        endDate: passEndDate,
+        price: amount,
+        status: 'pending',
+        paymentStatus: 'pending',
+      });
+
+      monthlyPass = await monthlyPass.populate([
+        { path: 'parkingLot', select: 'name code' },
+        { path: 'vehicleType', select: 'name' }
+      ]);
+    }
+
+    const transferContent = generateTransferContent('MP');
+    const bankId = process.env.SEPAY_BANK_ID || 'MB';
+    const accountNumber = process.env.SEPAY_ACCOUNT_NUMBER || '0342347435';
+    const accountName = encodeURIComponent(process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING');
+    const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
+
+    const payment = await Payment.create({
+      monthlyPass: monthlyPass._id,
+      user: userId,
+      parkingLot: parkingLotId,
+      amount,
+      baseFee: amount,
+      overtimeFee: 0,
+      method: 'bank_transfer',
+      status: 'pending',
+      transferContent,
+      bankTransferQrUrl: qrUrl,
+      paymentType: 'monthly_pass',
+    });
+
+    return {
+      payment,
+      monthlyPass,
+      transferContent,
+      amount,
+      bankInfo: { bankName: bankId, accountNumber, accountName: process.env.SEPAY_ACCOUNT_NAME || 'PARKINGBUILDING' },
+      qrUrl,
+    };
+  }
+
+  /**
    * Handle SEPay webhook callback
    * SEPay sends POST when a bank transfer is received
    * We match the transfer content to find and confirm the pending payment

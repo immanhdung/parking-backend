@@ -31,6 +31,7 @@ class ParkingLotService {
   async getById(id) {
     const lot = await ParkingLot.findById(id)
       .populate('manager', 'fullName email phone avatar')
+      .populate('managers', 'fullName email phone avatar role')
       .populate('staff', 'fullName email phone');
     if (!lot) throw ApiError.notFound('Parking lot not found.');
     return lot;
@@ -157,14 +158,21 @@ class ParkingLotService {
 
     const User = require('../users/user.model');
 
-    // Include both staff list AND the assigned manager
-    const allIds = [...lot.staff];
-    if (lot.manager && !allIds.some(id => id.toString() === lot.manager.toString())) {
-      allIds.push(lot.manager);
+    // Collect all staff IDs
+    const staffIds = [...lot.staff];
+    // Include all managers from managers[] array
+    (lot.managers || []).forEach(mId => {
+      if (!staffIds.some(id => id.toString() === mId.toString())) {
+        staffIds.push(mId);
+      }
+    });
+    // Also include legacy lot.manager if not already in list
+    if (lot.manager && !staffIds.some(id => id.toString() === lot.manager.toString())) {
+      staffIds.push(lot.manager);
     }
 
     const staff = await User.find({
-      _id: { $in: allIds },
+      _id: { $in: staffIds },
     })
       .select('fullName email phone avatar status role createdAt')
       .sort({ fullName: 1 });
@@ -333,7 +341,11 @@ class ParkingLotService {
       });
     }
 
+    // Update lot: set primary manager + add to managers[]
     lot.manager = user._id;
+    if (!(lot.managers || []).some(id => id.toString() === user._id.toString())) {
+      lot.managers = [...(lot.managers || []), user._id];
+    }
     await lot.save();
 
     // Send email
@@ -392,7 +404,11 @@ class ParkingLotService {
 
     // Ensure the requester manages this lot (or is admin)
     if (requestingUserId) {
-      const isManager = lot.manager?.toString() === requestingUserId.toString();
+      const allManagerIds = [
+        ...(lot.managers || []).map(id => id.toString()),
+        lot.manager ? lot.manager.toString() : null,
+      ].filter(Boolean);
+      const isManager = allManagerIds.includes(requestingUserId.toString());
       if (!isManager) {
         const reqUser = await User.findById(requestingUserId);
         if (reqUser?.role !== 'system_admin') {

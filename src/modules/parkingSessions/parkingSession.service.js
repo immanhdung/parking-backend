@@ -72,7 +72,7 @@ async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null
     return slot; // This slot is safe for a walk-in
   }
 
-  throw ApiError.badRequest('No available slots for this vehicle type (all remaining slots are reserved for upcoming bookings).');
+  throw ApiError.badRequest('The parking lot is full. There are no available slots for this vehicle type right now.');
 }
 
 class ParkingSessionService {

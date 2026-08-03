@@ -37,6 +37,13 @@ const parkingLotSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    // managers[] supports multiple managers per building
+    managers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
     staff: [
       {
         type: mongoose.Schema.Types.ObjectId,
