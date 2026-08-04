@@ -4,11 +4,11 @@
  * Sends transactional emails using SMTP credentials from environment variables.
  *
  * Required .env variables:
- *   SMTP_HOST      — e.g. smtp.gmail.com
- *   SMTP_PORT      — e.g. 587
- *   SMTP_USER      — sender email address
- *   SMTP_PASS      — app password / SMTP password
- *   SMTP_FROM_NAME — display name (default: "ParkingBuilding")
+ *   EMAIL_HOST      — e.g. smtp.gmail.com
+ *   EMAIL_PORT      — e.g. 587
+ *   EMAIL_USER      — sender email address
+ *   EMAIL_PASS      — app password / SMTP password
+ *   EMAIL_FROM_NAME — display name (default: "ParkingBuilding")
  */
 
 const nodemailer = require('nodemailer');
@@ -16,16 +16,16 @@ const logger = require('./logger');
 
 // Create transporter once at module load
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: false, // TLS
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.EMAIL_PORT) || 587,
+  secure: process.env.EMAIL_PORT == 465, // TLS for 587, SSL for 465
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
-const FROM = `"${process.env.SMTP_FROM_NAME || 'ParkingBuilding'}" <${process.env.SMTP_USER}>`;
+const FROM = `"${process.env.EMAIL_FROM_NAME || 'ParkingBuilding'}" <${process.env.EMAIL_USER}>`;
 
 /**
  * Send a generic email.

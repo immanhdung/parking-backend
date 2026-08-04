@@ -16,8 +16,10 @@ const createTransport = () => {
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
     const transporter = createTransport();
+    const fromName = process.env.EMAIL_FROM_NAME || 'Parking System';
+    const fromAddress = process.env.EMAIL_USER;
     const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
+      from: `"${fromName}" <${fromAddress}>`,
       to,
       subject,
       html,
