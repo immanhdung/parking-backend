@@ -224,18 +224,26 @@ const scanOverdueSessions = async () => {
           if (session.user?.email) {
             const floorObj = replacement.floor;
             const zoneObj  = replacement.zone;
-            await sendOverdueRelocationEmail({
-              to:             session.user.email,
-              userName:       session.user.fullName || 'Customer',
-              oldSlotCode:    oldSlot?.slotCode || '—',
-              newSlotCode:    replacement.slotCode,
-              floorName:      typeof floorObj === 'object'
-                                ? (floorObj.name || `Floor ${floorObj.floorNumber}`)
-                                : '—',
-              zoneName:       typeof zoneObj === 'object' ? (zoneObj.name || '') : '',
-              lotName,
-              overdueMinutes,
-            });
+            logger.info(`[OverdueWorker] 📧 Sending relocation email to ${session.user.email}...`);
+            try {
+              await sendOverdueRelocationEmail({
+                to:             session.user.email,
+                userName:       session.user.fullName || 'Customer',
+                oldSlotCode:    oldSlot?.slotCode || '—',
+                newSlotCode:    replacement.slotCode,
+                floorName:      typeof floorObj === 'object'
+                                  ? (floorObj.name || `Floor ${floorObj.floorNumber}`)
+                                  : '—',
+                zoneName:       typeof zoneObj === 'object' ? (zoneObj.name || '') : '',
+                lotName,
+                overdueMinutes,
+              });
+              logger.info(`[OverdueWorker] ✅ Relocation email sent to ${session.user.email}`);
+            } catch (emailErr) {
+              logger.error(`[OverdueWorker] ❌ Failed to send relocation email to ${session.user.email}: ${emailErr.message}`);
+            }
+          } else {
+            logger.warn(`[OverdueWorker] ⚠️ No email found for user on session ${session.sessionCode} — skipping email.`);
           }
         } else {
           // No replacement found — still alert staff, no physical move
