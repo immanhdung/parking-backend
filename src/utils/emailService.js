@@ -1,31 +1,48 @@
 /**
- * Email Service — Nodemailer wrapper
+ * Email Service — Gmail API
  * ====================================
- * Sends transactional emails using SMTP credentials from environment variables.
+ * Sends transactional emails using Gmail API.
  *
  * Required .env variables:
- *   SMTP_HOST      — e.g. smtp.gmail.com
- *   SMTP_PORT      — e.g. 587
- *   SMTP_USER      — sender email address
- *   SMTP_PASS      — app password / SMTP password
- *   SMTP_FROM_NAME — display name (default: "ParkingBuilding")
+ *   GMAIL_CLIENT_ID
+ *   GMAIL_CLIENT_SECRET
+ *   GMAIL_REFRESH_TOKEN
+ *   GMAIL_USER      — sender email address
+ *   GMAIL_FROM_NAME — display name (default: "ParkingBuilding")
  */
 
-const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const logger = require('./logger');
 
-// Create transporter once at module load
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: false, // TLS
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const createGmailClient = () => {
+  const oAuth2Client = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground'
+  );
+  oAuth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+  return google.gmail({ version: 'v1', auth: oAuth2Client });
+};
 
-const FROM = `"${process.env.SMTP_FROM_NAME || 'ParkingBuilding'}" <${process.env.SMTP_USER}>`;
+const FROM = `"${process.env.GMAIL_FROM_NAME || 'ParkingBuilding'}" <${process.env.GMAIL_USER}>`;
+
+const makeBody = (to, from, subject, html) => {
+  const str = [
+    `To: ${to}`,
+    `From: ${from}`,
+    `Subject: =?utf-8?B?${Buffer.from(subject).toString('base64')}?=`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=utf-8`,
+    '',
+    html
+  ].join('\r\n');
+  
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+};
 
 /**
  * Send a generic email.
@@ -34,13 +51,20 @@ const FROM = `"${process.env.SMTP_FROM_NAME || 'ParkingBuilding'}" <${process.en
  * @param {string} html       - HTML body
  */
 async function sendMail(to, subject, html) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    logger.warn('[EmailService] SMTP credentials not configured — skipping email to ' + to);
+  if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_REFRESH_TOKEN) {
+    logger.warn('[EmailService] Gmail API credentials not configured — skipping email to ' + to);
     return;
   }
   try {
-    const info = await transporter.sendMail({ from: FROM, to, subject, html });
-    logger.info(`[EmailService] ✉️  Sent to ${to}: "${subject}" (msgId: ${info.messageId})`);
+    const gmail = createGmailClient();
+    const rawMessage = makeBody(to, FROM, subject, html);
+    const res = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: rawMessage,
+      },
+    });
+    logger.info(`[EmailService] ✉️  Sent to ${to}: "${subject}" (msgId: ${res.data.id})`);
   } catch (err) {
     logger.error(`[EmailService] Failed to send email to ${to}: ${err.message}`);
   }

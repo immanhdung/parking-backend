@@ -1,30 +1,48 @@
-const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const logger = require('./logger');
 
-const createTransport = () => {
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_PORT == 465,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+const createGmailClient = () => {
+  const oAuth2Client = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground'
+  );
+  oAuth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+  return google.gmail({ version: 'v1', auth: oAuth2Client });
+};
+
+const makeBody = (to, from, subject, html, text) => {
+  const str = [
+    `To: ${to}`,
+    `From: ${from}`,
+    `Subject: =?utf-8?B?${Buffer.from(subject).toString('base64')}?=`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=utf-8`,
+    '',
+    html || text
+  ].join('\r\n');
+
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 };
 
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
-    const transporter = createTransport();
-    const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
-      to,
-      subject,
-      html,
-      text,
+    const gmail = createGmailClient();
+    const from = process.env.GMAIL_FROM || process.env.GMAIL_USER || 'noreply@parking.com';
+    const rawMessage = makeBody(to, from, subject, html, text);
+
+    const res = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: rawMessage,
+      },
     });
-    logger.info(`Email sent: ${info.messageId}`);
-    return info;
+    logger.info(`Email sent: ${res.data.id}`);
+    return res.data;
   } catch (error) {
     logger.error(`Email send error: ${error.message}`);
     throw error;
