@@ -8,7 +8,7 @@ const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { generateQRCode, suggestOptimalSlot, calculateParkingFee } = require('../../utils/helpers');
 const { emitSlotUpdate } = require('../../sockets/socket.server');
-const { toAbsoluteDateRange } = require('../../utils/dateUtils');
+const { toAbsoluteDateRange, TZ_OFFSET_MS } = require('../../utils/dateUtils');
 
 /**
  * Convert a booking's scheduledDate + startTime/endTime into absolute Date objects.
@@ -242,8 +242,11 @@ class BookingService {
       throw ApiError.badRequest(`The selected time period is completely overlapped by an existing booking.`);
     }
 
-    let finalStartTime = `${String(finalEntryTime.getHours()).padStart(2, '0')}:${String(finalEntryTime.getMinutes()).padStart(2, '0')}`;
-    let finalEndTime = `${String(finalExitTime.getHours()).padStart(2, '0')}:${String(finalExitTime.getMinutes()).padStart(2, '0')}`;
+    // Extract ICT hours/minutes from UTC Date (getHours() uses server-local TZ, which is UTC on Vercel)
+    const ictEntry = new Date(finalEntryTime.getTime() + TZ_OFFSET_MS);
+    const ictExit  = new Date(finalExitTime.getTime()  + TZ_OFFSET_MS);
+    let finalStartTime = `${String(ictEntry.getUTCHours()).padStart(2, '0')}:${String(ictEntry.getUTCMinutes()).padStart(2, '0')}`;
+    let finalEndTime   = `${String(ictExit.getUTCHours()).padStart(2, '0')}:${String(ictExit.getUTCMinutes()).padStart(2, '0')}`;
 
     let recommendedSlot = null;
 
