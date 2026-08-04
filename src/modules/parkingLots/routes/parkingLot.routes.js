@@ -204,4 +204,10 @@ router.post('/:id/assign-manager', restrictTo('system_admin'), ctrl.assignManage
  */
 router.post('/:id/add-staff', restrictTo('parking_manager', 'system_admin'), ctrl.addStaffByEmail);
 
+/**
+ * POST /parking-lots/:id/sync-slots
+ * Admin/Manager: recalculate totalSlots, availableSlots, occupiedSlots from actual slot data
+ */
+router.post('/:id/sync-slots', restrictTo('parking_manager', 'system_admin'), ctrl.syncSlotCounts);
+
 module.exports = router;

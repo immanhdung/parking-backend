@@ -87,6 +87,20 @@ class ParkingLotController {
     const result = await parkingLotService.addStaffByEmail(req.params.id, email, req.user._id);
     ApiResponse.success(res, result.message, result.user);
   });
+
+  /**
+   * POST /parking-lots/:id/sync-slots (admin/manager)
+   * Recalculate totalSlots, availableSlots, occupiedSlots from actual slot data
+   */
+  syncSlotCounts = asyncHandler(async (req, res) => {
+    await parkingLotService.syncSlotCounts(req.params.id);
+    const lot = await parkingLotService.getById(req.params.id);
+    ApiResponse.success(res, 'Slot counts synced successfully.', {
+      totalSlots: lot.totalSlots,
+      availableSlots: lot.availableSlots,
+      occupiedSlots: lot.occupiedSlots,
+    });
+  });
 }
 
 module.exports = new ParkingLotController();

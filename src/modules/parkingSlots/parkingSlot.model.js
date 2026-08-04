@@ -77,8 +77,8 @@ const parkingSlotSchema = new mongoose.Schema(
   }
 );
 
-// Compound index: slotCode unique per parking lot
-parkingSlotSchema.index({ parkingLot: 1, slotCode: 1 }, { unique: true });
+// Compound index: slotCode unique per floor (same code allowed on different floors)
+parkingSlotSchema.index({ parkingLot: 1, floor: 1, slotCode: 1 }, { unique: true });
 parkingSlotSchema.index({ parkingLot: 1, status: 1 });
 parkingSlotSchema.index({ floor: 1, status: 1 });
 parkingSlotSchema.index({ zone: 1, status: 1 });

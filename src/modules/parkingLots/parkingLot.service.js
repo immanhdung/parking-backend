@@ -31,6 +31,7 @@ class ParkingLotService {
   async getById(id) {
     const lot = await ParkingLot.findById(id)
       .populate('manager', 'fullName email phone avatar')
+      .populate('managers', 'fullName email phone avatar role')
       .populate('staff', 'fullName email phone');
     if (!lot) throw ApiError.notFound('Parking lot not found.');
     return lot;
@@ -157,14 +158,21 @@ class ParkingLotService {
 
     const User = require('../users/user.model');
 
-    // Include both staff list AND the assigned manager
-    const allIds = [...lot.staff];
-    if (lot.manager && !allIds.some(id => id.toString() === lot.manager.toString())) {
-      allIds.push(lot.manager);
+    // Collect all staff IDs
+    const staffIds = [...lot.staff];
+    // Include all managers from managers[] array
+    (lot.managers || []).forEach(mId => {
+      if (!staffIds.some(id => id.toString() === mId.toString())) {
+        staffIds.push(mId);
+      }
+    });
+    // Also include legacy lot.manager if not already in list
+    if (lot.manager && !staffIds.some(id => id.toString() === lot.manager.toString())) {
+      staffIds.push(lot.manager);
     }
 
     const staff = await User.find({
-      _id: { $in: allIds },
+      _id: { $in: staffIds },
     })
       .select('fullName email phone avatar status role createdAt')
       .sort({ fullName: 1 });
@@ -188,14 +196,16 @@ class ParkingLotService {
       throw ApiError.badRequest('User must be a staff or a manager.');
     }
 
-    // Check if already assigned to another lot
-    if (
-      staffUser.assignedParkingLot &&
-      staffUser.assignedParkingLot.toString() !== parkingLotId
-    ) {
-      const otherLot = await ParkingLot.findById(staffUser.assignedParkingLot).select('name');
+    // Check if already assigned to another lot (staff: one lot only)
+    const currentAssigned = Array.isArray(staffUser.assignedParkingLot)
+      ? staffUser.assignedParkingLot.map(id => id.toString())
+      : [];
+    const alreadyInOtherLot = currentAssigned.some(id => id !== parkingLotId);
+    if (alreadyInOtherLot) {
+      const otherLotId = currentAssigned.find(id => id !== parkingLotId);
+      const otherLot = await ParkingLot.findById(otherLotId).select('name');
       throw ApiError.conflict(
-        `Staff is already assigned to parking lot "${otherLot?.name || 'another lot'}". Remove them first.`
+        `Staff is already assigned to "${otherLot?.name || 'another lot'}". Remove them first.`
       );
     }
 
@@ -208,9 +218,8 @@ class ParkingLotService {
     lot.staff.push(staffId);
     await lot.save();
 
-    // Update user's assignedParkingLot
-    staffUser.assignedParkingLot = parkingLotId;
-    await staffUser.save({ validateBeforeSave: false });
+    // Update user's assignedParkingLot (replace entirely — staff: one lot only)
+    await User.findByIdAndUpdate(staffId, { assignedParkingLot: [parkingLotId] });
 
     return {
       message: 'Staff assigned successfully.',
@@ -242,8 +251,8 @@ class ParkingLotService {
     lot.staff.splice(staffIndex, 1);
     await lot.save();
 
-    // Clear user's assignedParkingLot
-    await User.findByIdAndUpdate(staffId, { assignedParkingLot: null });
+    // Clear user's assignedParkingLot (set to empty array)
+    await User.findByIdAndUpdate(staffId, { assignedParkingLot: [] });
 
     return { message: 'Staff removed from parking lot.' };
   }
@@ -257,9 +266,11 @@ class ParkingLotService {
 
     const filter = {
       role: { $in: ['parking_staff', 'parking_manager'] },
+      // Available = not assigned to any lot (empty array or missing field)
       $or: [
-        { assignedParkingLot: null },
         { assignedParkingLot: { $exists: false } },
+        { assignedParkingLot: null },
+        { assignedParkingLot: { $size: 0 } },
       ],
       status: 'active',
     };
@@ -330,7 +341,11 @@ class ParkingLotService {
       });
     }
 
+    // Update lot: set primary manager + add to managers[]
     lot.manager = user._id;
+    if (!(lot.managers || []).some(id => id.toString() === user._id.toString())) {
+      lot.managers = [...(lot.managers || []), user._id];
+    }
     await lot.save();
 
     // Send email
@@ -389,7 +404,11 @@ class ParkingLotService {
 
     // Ensure the requester manages this lot (or is admin)
     if (requestingUserId) {
-      const isManager = lot.manager?.toString() === requestingUserId.toString();
+      const allManagerIds = [
+        ...(lot.managers || []).map(id => id.toString()),
+        lot.manager ? lot.manager.toString() : null,
+      ].filter(Boolean);
+      const isManager = allManagerIds.includes(requestingUserId.toString());
       if (!isManager) {
         const reqUser = await User.findById(requestingUserId);
         if (reqUser?.role !== 'system_admin') {
@@ -404,7 +423,7 @@ class ParkingLotService {
     let tempPassword = null;
 
     if (!user) {
-      // Auto-create account
+      // Auto-create account with 1 lot only
       tempPassword = crypto.randomBytes(6).toString('hex');
       const hashed = await bcrypt.hash(tempPassword, 12);
       user = await User.create({
@@ -427,6 +446,20 @@ class ParkingLotService {
       if (lot.staff.some(id => id.toString() === user._id.toString())) {
         throw ApiError.conflict('User is already assigned to this parking lot.');
       }
+
+      // If staff is already in another lot, block the assignment
+      const currentAssigned = Array.isArray(user.assignedParkingLot)
+        ? user.assignedParkingLot.map(id => id.toString())
+        : [];
+      const oldLotIds = currentAssigned.filter(id => id !== parkingLotId);
+      if (oldLotIds.length > 0) {
+        const otherLot = await ParkingLot.findById(oldLotIds[0]).select('name');
+        throw ApiError.conflict(
+          `Staff is already working at "${otherLot?.name || 'another lot'}". Remove them from that lot first.`
+        );
+      }
+
+      // Assign to this lot (replace entirely — staff: one lot only)
       await User.findByIdAndUpdate(user._id, {
         role: 'parking_staff',
         assignedParkingLot: [parkingLotId],

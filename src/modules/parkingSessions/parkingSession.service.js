@@ -21,40 +21,59 @@ const WALK_IN_BUFFER_MS = 4 * 60 * 60 * 1000; // 4 hours
  */
 async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null) {
   const now = new Date();
-  const bufferEnd = new Date(now.getTime() + WALK_IN_BUFFER_MS);
+  const bufferEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4-hour walk-in buffer
+
+  // Match by vehicle type code to allow cross-matching if there are duplicate vehicle types
+  const VehicleType = require('../vehicleTypes/vehicleType.model');
+  const targetVT = await VehicleType.findById(vehicleTypeId);
+  let vtIds = [vehicleTypeId];
+  if (targetVT && targetVT.code) {
+    const similarVTs = await VehicleType.find({ code: targetVT.code });
+    vtIds = similarVTs.map(v => v._id);
+  }
 
   if (specificSlotId) {
-    // User or staff specified a slot — just validate it
     const slot = await ParkingSlot.findById(specificSlotId).populate('floor zone');
-    if (!slot) throw ApiError.notFound('Slot not found.');
-    if (slot.status !== 'available') throw ApiError.badRequest(`Slot ${slot.slotCode} is not available.`);
+    if (!slot) throw ApiError.notFound('Parking slot not found.');
 
-    // Check upcoming booking conflict for walk-in buffer
+    if (slot.parkingLot.toString() !== parkingLotId.toString()) {
+      throw ApiError.badRequest('This slot does not belong to the selected parking lot.');
+    }
+
+    if (!vtIds.some(id => id.toString() === slot.vehicleType.toString())) {
+      throw ApiError.badRequest('This slot is for a different vehicle type.');
+    }
+
+    // Check if slot is available
+    if (slot.status !== 'available') {
+      throw ApiError.badRequest(`This slot is currently ${slot.status}.`);
+    }
+
+    // Check upcoming bookings
     const upcomingBooking = await Booking.findOne({
       assignedSlot: slot._id,
       status: { $in: ['pending', 'approved'] },
-      // booking starts within 4 hours from now
     }).sort({ scheduledDate: 1, startTime: 1 });
 
     if (upcomingBooking) {
       const [sH, sM] = upcomingBooking.startTime.split(':').map(Number);
       const bookingStart = new Date(upcomingBooking.scheduledDate);
       bookingStart.setHours(sH, sM, 0, 0);
-      if (bookingStart <= bufferEnd && bookingStart >= now) {
-        throw ApiError.badRequest(
-          `Slot ${slot.slotCode} has a booking starting at ${upcomingBooking.startTime}. Please use a different slot.`
-        );
+      if (bookingStart >= now && bookingStart <= bufferEnd) {
+        throw ApiError.badRequest('This slot has an upcoming booking soon. Please choose another slot.');
       }
     }
     return slot;
   }
 
   // Auto-find: get candidate available slots
+  console.log('[DEBUG] findWalkInSlot Query:', { parkingLot: parkingLotId, vehicleType: { $in: vtIds }, status: 'available' });
   const candidates = await ParkingSlot.find({
     parkingLot: parkingLotId,
-    vehicleType: vehicleTypeId,
+    vehicleType: { $in: vtIds },
     status: 'available',
   }).populate('floor zone').sort({ 'floor.floorNumber': 1 }).limit(50);
+  console.log('[DEBUG] findWalkInSlot Found Candidates:', candidates.length);
 
   for (const slot of candidates) {
     const upcomingBooking = await Booking.findOne({
@@ -72,15 +91,16 @@ async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null
     return slot; // This slot is safe for a walk-in
   }
 
-  throw ApiError.badRequest('No available slots for this vehicle type (all remaining slots are reserved for upcoming bookings).');
+  throw ApiError.badRequest('The parking lot is full. There are no available slots for this vehicle type right now.');
 }
 
 class ParkingSessionService {
   async getSessions(query, user) {
-    const { page = 1, limit = 10, sort = '-entryTime', status, parkingLot, licensePlate, startDate, endDate } = query;
+    const { page = 1, limit = 10, sort = '-entryTime', status, parkingLot, licensePlate, slot, startDate, endDate } = query;
 
     const filter = {};
     if (status) filter.status = status;
+    if (slot) filter.slot = slot;
     if (licensePlate) {
       const cleanPlate = licensePlate.replace(/[^a-zA-Z0-9]/g, '');
       const regexStr = cleanPlate.split('').join('[^a-zA-Z0-9]*');
@@ -89,10 +109,13 @@ class ParkingSessionService {
 
     // Manager/Staff: only their lot
     if (user.role === 'parking_manager' || user.role === 'parking_staff') {
-      if (user.assignedParkingLot) {
-        filter.parkingLot = user.assignedParkingLot;
-      } else if (parkingLot) {
+      const assigned = user.assignedParkingLot;
+      if (parkingLot) {
         filter.parkingLot = parkingLot;
+      } else if (Array.isArray(assigned) && assigned.length > 0) {
+        filter.parkingLot = assigned.length === 1 ? assigned[0] : { $in: assigned };
+      } else if (assigned && !Array.isArray(assigned)) {
+        filter.parkingLot = assigned;
       }
     } else if (parkingLot) {
       filter.parkingLot = parkingLot;

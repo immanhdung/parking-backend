@@ -187,6 +187,9 @@ router.post('/bank-transfer/booking/initiate', ctrl.initiateBookingBankTransfer)
  */
 router.post('/bank-transfer/monthly-pass/initiate', restrictTo('parking_user', 'system_admin', 'parking_manager'), ctrl.initiateMonthlyPassBankTransfer);
 
+// Create pass + initiate payment in one call — no pending pass until user explicitly triggers payment
+router.post('/monthly-pass/create-and-pay', restrictTo('parking_user'), ctrl.createMonthlyPassAndPay);
+
 /**
  * @swagger
  * /payments/bank-transfer/{id}/status:

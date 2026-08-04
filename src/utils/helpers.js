@@ -186,22 +186,42 @@ const formatVND = (amount) => {
  */
 const getDateRange = (period) => {
   const now = new Date();
-  const start = new Date();
+  let start = new Date();
 
   switch (period) {
     case 'today':
-      start.setHours(0, 0, 0, 0);
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       break;
+    case 'this_month':
+      // From the 1st of the current month to now
+      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      break;
+    case 'last_7_days':
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+      break;
+    case 'last_30_days':
+      start = new Date(now);
+      start.setDate(now.getDate() - 30);
+      break;
+    case 'this_year':
+      start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      break;
+    // Legacy aliases
     case 'week':
+      start = new Date(now);
       start.setDate(now.getDate() - 7);
       break;
     case 'month':
+      start = new Date(now);
       start.setMonth(now.getMonth() - 1);
       break;
     case 'year':
+      start = new Date(now);
       start.setFullYear(now.getFullYear() - 1);
       break;
     default:
+      start = new Date(now);
       start.setDate(now.getDate() - 30);
   }
 

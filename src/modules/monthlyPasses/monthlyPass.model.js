@@ -81,12 +81,10 @@ monthlyPassSchema.pre('save', async function (next) {
     this.passCode = `MP-${timestamp}-${random}`;
   }
   
-  if (this.isModified('passCode') || this.isModified('licensePlate') || !this.qrCode) {
-    this.qrCodeData = JSON.stringify({
-      type: 'monthly_pass',
-      passCode: this.passCode,
-      licensePlate: this.licensePlate
-    });
+  if (this.isModified('passCode') || this.isModified('licensePlate') || this.isModified('parkingLot') || !this.qrCode) {
+    // Ultra-simple QR: plain string "MP:passCode:lotId" — shortest possible, easiest to scan
+    const lotIdStr = this.parkingLot ? this.parkingLot.toString() : '';
+    this.qrCodeData = `MP:${this.passCode}:${lotIdStr}`;
     try {
       this.qrCode = await generateQRCode(this.qrCodeData);
     } catch (error) {

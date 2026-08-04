@@ -105,6 +105,15 @@ class PaymentController {
     const result = await paymentService.checkBankTransferStatus(req.params.id);
     ApiResponse.success(res, 'Payment status retrieved.', result);
   });
+
+  /**
+   * POST /payments/monthly-pass/create-and-pay
+   * Create pass + QR in one shot — no pending pass until user clicks "Generate QR"
+   */
+  createMonthlyPassAndPay = asyncHandler(async (req, res) => {
+    const result = await paymentService.createMonthlyPassAndPay(req.body, req.user._id);
+    ApiResponse.created(res, 'Monthly pass created and payment QR generated.', result);
+  });
 }
 
 module.exports = new PaymentController();

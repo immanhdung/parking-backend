@@ -151,6 +151,21 @@ class MonthlyPassService {
       endDate: { $gte: now },
     });
   }
+
+  async cancelMyPass(id, user) {
+    const pass = await MonthlyPass.findById(id);
+    if (!pass) throw ApiError.notFound('Monthly pass not found.');
+    if (pass.user.toString() !== user._id.toString()) {
+      throw ApiError.forbidden('You can only cancel your own monthly pass.');
+    }
+    if (pass.status !== 'pending') {
+      throw ApiError.badRequest('Only pending (unpaid) passes can be cancelled.');
+    }
+    pass.status = 'cancelled';
+    pass.isDeleted = true;
+    await pass.save();
+    return { message: 'Monthly pass cancelled successfully.' };
+  }
 }
 
 module.exports = new MonthlyPassService();

@@ -19,21 +19,24 @@ class ReportService {
       // Restrict to assigned lots — assignedParkingLot can be array or single
       const assigned = user.assignedParkingLot;
       if (assigned && Array.isArray(assigned) && assigned.length > 0) {
-        filter.parkingLot = { $in: assigned.map(id => new mongoose.Types.ObjectId(id)) };
+        const ids = assigned.map(id => id?._id ? id._id.toString() : id.toString());
+        filter.parkingLot = { $in: ids.map(id => new mongoose.Types.ObjectId(id)) };
       } else if (assigned && !Array.isArray(assigned)) {
-        filter.parkingLot = new mongoose.Types.ObjectId(assigned);
+        const idStr = assigned?._id ? assigned._id.toString() : assigned.toString();
+        filter.parkingLot = new mongoose.Types.ObjectId(idStr);
       } else {
         filter.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
       }
     }
 
     const today = getDateRange('today');
+    const thisMonth = getDateRange('this_month');
 
     const [
       totalSessions,
       activeSessions,
       todaySessions,
-      todayRevenue,
+      monthRevenue,
       slotStats,
       totalUsers,
     ] = await Promise.all([
@@ -49,9 +52,9 @@ class ReportService {
             ...filter,
             status: 'completed',
             $or: [
-              { paidAt: { $gte: today.start, $lte: today.end } },
-              { paidAt: { $exists: false }, createdAt: { $gte: today.start, $lte: today.end } },
-              { paidAt: null, createdAt: { $gte: today.start, $lte: today.end } },
+              { paidAt: { $gte: thisMonth.start, $lte: thisMonth.end } },
+              { paidAt: { $exists: false }, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } },
+              { paidAt: null, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } },
             ],
           },
         },
@@ -77,7 +80,7 @@ class ReportService {
       totalSessions,
       activeSessions,
       todaySessions,
-      todayRevenue: todayRevenue[0]?.total || 0,
+      todayRevenue: monthRevenue[0]?.total || 0,
       slots: slotSummary,
       occupancyRate,
       totalUsers,
@@ -95,8 +98,7 @@ class ReportService {
       status: 'completed',
       $or: [
         { paidAt: { $gte: start, $lte: end } },
-        { paidAt: { $exists: false }, createdAt: { $gte: start, $lte: end } },
-        { paidAt: null, createdAt: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } },
       ],
     };
 
@@ -105,9 +107,11 @@ class ReportService {
     } else if (user.role === 'parking_manager' || user.role === 'parking_staff') {
       const assigned = user.assignedParkingLot;
       if (assigned && Array.isArray(assigned) && assigned.length > 0) {
-        match.parkingLot = { $in: assigned.map(id => new mongoose.Types.ObjectId(id)) };
+        const ids = assigned.map(id => id?._id ? id._id.toString() : id.toString());
+        match.parkingLot = { $in: ids.map(id => new mongoose.Types.ObjectId(id)) };
       } else if (assigned && !Array.isArray(assigned)) {
-        match.parkingLot = new mongoose.Types.ObjectId(assigned);
+        const idStr = assigned?._id ? assigned._id.toString() : assigned.toString();
+        match.parkingLot = new mongoose.Types.ObjectId(idStr);
       } else {
         match.parkingLot = new mongoose.Types.ObjectId('000000000000000000000000');
       }
