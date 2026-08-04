@@ -408,10 +408,24 @@ class ParkingLotService {
         ...(lot.managers || []).map(id => id.toString()),
         lot.manager ? lot.manager.toString() : null,
       ].filter(Boolean);
-      const isManager = allManagerIds.includes(requestingUserId.toString());
-      if (!isManager) {
+      const isInLotManagerList = allManagerIds.includes(requestingUserId.toString());
+
+      if (!isInLotManagerList) {
         const reqUser = await User.findById(requestingUserId);
-        if (reqUser?.role !== 'system_admin') {
+        if (reqUser?.role === 'system_admin') {
+          // system_admin always allowed — fall through
+        } else if (reqUser?.role === 'parking_manager') {
+          // Also accept managers whose assignedParkingLot contains this lot
+          // (covers cases where lot.managers[] wasn't updated by the old assignment path)
+          const assignedIds = Array.isArray(reqUser.assignedParkingLot)
+            ? reqUser.assignedParkingLot.map(id => id.toString())
+            : reqUser.assignedParkingLot
+              ? [reqUser.assignedParkingLot.toString()]
+              : [];
+          if (!assignedIds.includes(parkingLotId.toString())) {
+            throw ApiError.forbidden('You are not the manager of this parking lot.');
+          }
+        } else {
           throw ApiError.forbidden('You are not the manager of this parking lot.');
         }
       }
