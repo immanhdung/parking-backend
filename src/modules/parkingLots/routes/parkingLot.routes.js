@@ -3,7 +3,7 @@ const router = express.Router();
 const ctrl = require('../parkingLot.controller');
 const { protect, restrictTo } = require('../../../middleware/auth');
 
-router.use(protect);
+// Public routes will be defined before protect middleware
 
 /**
  * @swagger
@@ -62,6 +62,12 @@ router.use(protect);
  *         description: Code already exists
  */
 router.get('/', ctrl.getAll);
+router.get('/:id', ctrl.getById);
+router.get('/:id/slots-summary', ctrl.getSlotsSummary);
+
+// Protected routes middleware
+router.use(protect);
+
 router.post('/', restrictTo('parking_manager', 'system_admin'), ctrl.create);
 
 /**
@@ -118,10 +124,8 @@ router.get('/available-staff', restrictTo('parking_manager', 'system_admin'), ct
  *       200:
  *         description: Deleted
  */
-router.get('/:id', ctrl.getById);
 router.put('/:id', restrictTo('system_admin', 'parking_manager'), ctrl.update);
 router.delete('/:id', restrictTo('system_admin'), ctrl.delete);
-router.get('/:id/slots-summary', ctrl.getSlotsSummary);
 
 /**
  * @swagger

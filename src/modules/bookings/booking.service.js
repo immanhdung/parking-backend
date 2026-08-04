@@ -67,7 +67,7 @@ async function getConflictingBookings(slotId, wantedStart, wantedEnd, excludeBoo
   return existing.filter(b => {
     const { start, end } = bookingToAbsoluteTimes(b);
     const effectiveStart = new Date(start.getTime() - EARLY_CHECKIN_BUFFER_MS);
-    const effectiveEnd   = new Date(end.getTime()   + CHECKOUT_BUFFER_MS);
+    const effectiveEnd = new Date(end.getTime() + CHECKOUT_BUFFER_MS);
     return intervalsOverlap(wantedStart, wantedEnd, effectiveStart, effectiveEnd);
   });
 }
@@ -289,8 +289,8 @@ class BookingService {
           const ParkingSession = require('../parkingSessions/parkingSession.model');
           const sess = recommendedSlot.currentSession
             ? await ParkingSession.findById(recommendedSlot.currentSession)
-                .populate('booking', 'scheduledDate startTime endTime')
-                .lean()
+              .populate('booking', 'scheduledDate startTime endTime')
+              .lean()
             : null;
           occupantBooking = sess?.booking || null;
         }
