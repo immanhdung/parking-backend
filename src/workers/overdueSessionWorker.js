@@ -236,7 +236,7 @@ const scanOverdueSessions = async () => {
                                   : '—',
                 zoneName:       typeof zoneObj === 'object' ? (zoneObj.name || '') : '',
                 lotName,
-                overdueMinutes,
+                licensePlate:   session.vehicleInfo?.licensePlate || 'Unknown',
               });
               logger.info(`[OverdueWorker] ✅ Relocation email sent to ${session.user.email}`);
             } catch (emailErr) {
