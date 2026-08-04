@@ -36,7 +36,7 @@ const makeBody = (to, from, subject, html) => {
     '',
     html
   ].join('\r\n');
-  
+
   return Buffer.from(str)
     .toString('base64')
     .replace(/\+/g, '-')
