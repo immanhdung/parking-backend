@@ -8,20 +8,15 @@ const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { generateQRCode, suggestOptimalSlot, calculateParkingFee } = require('../../utils/helpers');
 const { emitSlotUpdate } = require('../../sockets/socket.server');
+const { toAbsoluteDateRange } = require('../../utils/dateUtils');
 
 /**
  * Convert a booking's scheduledDate + startTime/endTime into absolute Date objects.
  * Handles cross-midnight bookings (endTime < startTime).
+ * Uses UTC-safe conversion so results are identical on local (UTC+7) and deploy (UTC) servers.
  */
 function bookingToAbsoluteTimes(booking) {
-  const [sH, sM] = booking.startTime.split(':').map(Number);
-  let [eH, eM] = booking.endTime.split(':').map(Number);
-  if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
-  const start = new Date(booking.scheduledDate);
-  start.setHours(sH, sM, 0, 0);
-  const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
-  const end = new Date(start.getTime() + durationMs);
-  return { start, end };
+  return toAbsoluteDateRange(booking.scheduledDate, booking.startTime, booking.endTime);
 }
 
 /**
@@ -195,10 +190,8 @@ class BookingService {
       throw ApiError.badRequest('End time must be after start time.');
     }
 
-    // Calculate original entry and exit times
-    const entryTime = new Date(scheduledDate);
-    entryTime.setHours(startH, startM, 0, 0);
-    const exitTime = new Date(entryTime.getTime() + durationHours * 60 * 60 * 1000);
+    // Calculate original entry and exit times (UTC-safe)
+    const { start: entryTime, end: exitTime } = toAbsoluteDateRange(scheduledDate, startTime, endTime);
 
     let finalEntryTime = new Date(entryTime);
     let finalExitTime = new Date(exitTime);
@@ -226,16 +219,7 @@ class BookingService {
       });
 
       for (const eb of existingBookings) {
-        const [ebStartH, ebStartM] = eb.startTime.split(':').map(Number);
-        let [ebEndH, ebEndM] = eb.endTime.split(':').map(Number);
-        if (ebEndH < ebStartH || (ebEndH === ebStartH && ebEndM < ebStartM)) {
-          ebEndH += 24;
-        }
-        const ebDuration = (ebEndH * 60 + ebEndM - (ebStartH * 60 + ebStartM)) / 60;
-
-        const ebEntryTime = new Date(eb.scheduledDate);
-        ebEntryTime.setHours(ebStartH, ebStartM, 0, 0);
-        const ebExitTime = new Date(ebEntryTime.getTime() + ebDuration * 60 * 60 * 1000);
+        const { start: ebEntryTime, end: ebExitTime } = toAbsoluteDateRange(eb.scheduledDate, eb.startTime, eb.endTime);
 
         if (finalEntryTime < ebExitTime && finalExitTime > ebEntryTime) {
           if (finalEntryTime >= ebEntryTime && finalExitTime <= ebExitTime) {
@@ -296,11 +280,11 @@ class BookingService {
         }
 
         if (occupantBooking?.endTime && occupantBooking?.scheduledDate) {
-          const [sh, sm] = (occupantBooking.startTime || '00:00').split(':').map(Number);
-          const [eh, em] = occupantBooking.endTime.split(':').map(Number);
-          const plainEnd = new Date(occupantBooking.scheduledDate);
-          plainEnd.setHours(eh, em, 0, 0);
-          if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1); // cross-midnight
+          const { end: plainEnd } = toAbsoluteDateRange(
+            occupantBooking.scheduledDate,
+            occupantBooking.startTime || '00:00',
+            occupantBooking.endTime
+          );
           const effectiveOccupantEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
           occupantEndOk = effectiveOccupantEnd <= finalEntryTime;
         }

@@ -28,6 +28,7 @@ const Booking        = require('../modules/bookings/booking.model');
 const { emitOverdueAlert } = require('../sockets/socket.server');
 const { sendOverdueRelocationEmail } = require('../utils/emailService');
 const logger = require('../utils/logger');
+const { toAbsoluteDateRange } = require('../utils/dateUtils');
 
 // How often the worker runs (ms). Default: every 60 seconds.
 const SCAN_INTERVAL_MS  = parseInt(process.env.OVERDUE_SCAN_INTERVAL_MS)  || 60 * 1000;
@@ -41,12 +42,11 @@ let _io = null; // Socket.IO instance injected via startOverdueWorker(io)
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Given a booking's scheduledDate + HH:mm endTime, returns the absolute end Date.
- * Handles cross-midnight bookings.
+ * Given a booking's scheduledDate + startTime/endTime, returns the absolute end Date.
+ * Handles cross-midnight bookings. UTC-safe via toAbsoluteDateRange.
  */
 function bookingAbsoluteEnd(booking) {
-  const dateStr = new Date(booking.scheduledDate).toISOString().split('T')[0];
-  return new Date(`${dateStr}T${booking.endTime}:00`);
+  return toAbsoluteDateRange(booking.scheduledDate, booking.startTime || '00:00', booking.endTime).end;
 }
 
 /**
@@ -63,9 +63,7 @@ async function slotNeededSoon(slotId) {
   }).lean();
 
   for (const b of upcoming) {
-    const dateStr = new Date(b.scheduledDate).toISOString().split('T')[0];
-    const [h, m] = b.startTime.split(':').map(Number);
-    const start = new Date(`${dateStr}T${b.startTime}:00`);
+    const start = toAbsoluteDateRange(b.scheduledDate, b.startTime, b.endTime).start;
     if (start >= now && start <= windowEnd) return true;
   }
   return false;
@@ -121,8 +119,7 @@ async function filterConflictFree(slots) {
       status: { $in: ['pending', 'approved'] },
     }).lean();
     if (upcoming) {
-      const dateStr = new Date(upcoming.scheduledDate).toISOString().split('T')[0];
-      const start = new Date(`${dateStr}T${upcoming.startTime}:00`);
+      const start = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).start;
       if (start <= soon) continue;
     }
     results.push(slot);
