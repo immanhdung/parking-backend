@@ -129,7 +129,7 @@ class BookingService {
       .populate('parkingLot', 'name code address operatingHours')
       .populate('floor', 'name floorNumber')
       .populate('zone', 'name code')
-      .populate('assignedSlot', 'slotCode position features')
+      .populate('assignedSlot', 'slotCode position features status')
       .populate('vehicleType', 'name code pricing')
       .populate('parkingSession');
 

@@ -197,36 +197,35 @@ class ParkingSessionService {
       // If checking in via booking
       booking = await Booking.findById(bookingId).populate('vehicleType').populate('assignedSlot');
       if (!booking) throw ApiError.notFound('Booking not found.');
-      if (booking.status !== 'approved') throw ApiError.badRequest('Booking is not approved.');
+      if (booking.status === 'completed') throw ApiError.badRequest('This booking has already been used.');
+      if (booking.status === 'cancelled') throw ApiError.badRequest('This booking has been cancelled.');
+      if (booking.status !== 'approved') throw ApiError.badRequest(`Booking is currently ${booking.status} and cannot be used.`);
 
       if (parkingLotId && booking.parkingLot.toString() !== parkingLotId.toString()) {
         throw ApiError.badRequest('This booking is not valid for this parking lot.');
       }
 
-      // ── Early check-in enforcement ────────────────────────────────────────
-      // Allow check-in up to EARLY_CHECKIN_BUFFER_MS (15 min) before scheduled start.
-      // Reject if the customer arrives too early (> 15 min before start time).
-      const EARLY_CHECKIN_BUFFER_MS = 15 * 60 * 1000;
-      const [bSH, bSM] = booking.startTime.split(':').map(Number);
-      const bookingStart = new Date(booking.scheduledDate);
-      bookingStart.setHours(bSH, bSM, 0, 0);
-      const earliestAllowed = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
-      const now = new Date();
-      if (now < earliestAllowed) {
-        const minutesUntilAllowed = Math.ceil((earliestAllowed - now) / 60000);
-        throw ApiError.badRequest(
-          `Too early to check in. Your booking starts at ${booking.startTime}. ` +
-          `Check-in is allowed from ${new Date(earliestAllowed).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ` +
-          `(${minutesUntilAllowed} minute(s) from now).`
-        );
-      }
-      // ─────────────────────────────────────────────────────────────────────
 
-      slot = booking.assignedSlot;
+      // If staff overrides the slot (e.g., original slot is occupied)
+      if (slotId && (!booking.assignedSlot || slotId !== booking.assignedSlot._id.toString())) {
+        const actualParkingLotId = parkingLotId || booking.parkingLot;
+        const newSlot = await findWalkInSlot(actualParkingLotId, booking.vehicleType._id || booking.vehicleType, slotId);
+        
+        // Free the old slot's booking reference
+        if (booking.assignedSlot) {
+          await ParkingSlot.findByIdAndUpdate(booking.assignedSlot._id, { currentBooking: null });
+        }
+        
+        booking.assignedSlot = newSlot; // Store temporarily for session creation
+        slot = newSlot;
+      } else {
+        slot = booking.assignedSlot;
+      }
+
       vehicleType = booking.vehicleType;
       userId = booking.user;
-      floorId = booking.floor;
-      zoneId = booking.zone;
+      floorId = slot.floor._id || slot.floor;
+      zoneId = slot.zone?._id || slot.zone;
 
       // Verify license plate matches
       if (licensePlate && booking.vehicleInfo?.licensePlate &&
@@ -346,6 +345,9 @@ class ParkingSessionService {
       await Booking.findByIdAndUpdate(booking._id, {
         status: 'completed',
         parkingSession: session._id,
+        assignedSlot: slot._id,
+        floor: floorId,
+        zone: zoneId
       });
     }
 
