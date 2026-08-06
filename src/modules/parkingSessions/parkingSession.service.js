@@ -511,18 +511,17 @@ class ParkingSessionService {
         }
 
         // Late Departure / Overtime Fee (if they exit after the scheduled end time)
+        // No grace period on fee — charge immediately when user crosses into a new block.
+        // calculateOvertimeFee() returns 0 if still within the already-paid block.
         if (exitTime > scheduledEnd) {
           const overtimeMs = exitTime - scheduledEnd;
-          const lateHours = overtimeMs / (1000 * 60 * 60);
-          overtimeHours = lateHours;
-          
-          if (lateHours > 15 / 60) {
-            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late', scheduledStart);
-            overtimeFee += overtimeCalc.fee;
-            surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
-            overtimeBlocks += overtimeCalc.overtimeBlocks;
-            isOvertime = true;
-          }
+          overtimeHours = overtimeMs / (1000 * 60 * 60);
+
+          const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late', scheduledStart);
+          overtimeFee += overtimeCalc.fee;
+          surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
+          overtimeBlocks += overtimeCalc.overtimeBlocks;
+          if (overtimeCalc.fee > 0) isOvertime = true;
         }
       }
     } else {
