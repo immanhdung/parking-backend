@@ -311,6 +311,16 @@ exports.requestLeave = async (req, res, next) => {
     const { id } = req.params;
     const { date, shiftType, leaveReason } = req.body;
 
+    let shiftTime = '00:00';
+    if (shiftType === 'morning') shiftTime = '06:00';
+    if (shiftType === 'afternoon') shiftTime = '14:00';
+    if (shiftType === 'night') shiftTime = '22:00';
+
+    const shiftDate = dayjs(`${date} ${shiftTime}`);
+    if (shiftDate.isBefore(dayjs())) {
+      return next(ApiError.badRequest('Cannot request leave for a shift in the past'));
+    }
+
     const schedule = await WorkSchedule.findOne({ _id: id, staff: req.user._id });
     if (!schedule) {
       return next(ApiError.notFound('Schedule not found'));
@@ -346,6 +356,16 @@ exports.assignStaffToShift = async (req, res, next) => {
       return next(ApiError.badRequest('Missing required fields'));
     }
 
+    let shiftTime = '00:00';
+    if (shiftType === 'morning') shiftTime = '06:00';
+    if (shiftType === 'afternoon') shiftTime = '14:00';
+    if (shiftType === 'night') shiftTime = '22:00';
+
+    const shiftDate = dayjs(`${date} ${shiftTime}`);
+    if (shiftDate.isBefore(dayjs())) {
+      return next(ApiError.badRequest('Cannot assign staff to a shift in the past'));
+    }
+
     const monthYear = date.substring(0, 7);
     let schedule = await WorkSchedule.findOne({ staff: staffId, parkingLot: parkingLotId, monthYear });
 
@@ -355,12 +375,12 @@ exports.assignStaffToShift = async (req, res, next) => {
 
     const existing = schedule.shifts.find(s => s.date === date && s.shiftType === shiftType);
     if (existing) {
-      if (existing.status === 'approved' || existing.status === 'published' || existing.status === 'pending') {
+      if (existing.status === 'approved' || existing.status === 'published' || existing.status === 'pending' || existing.status === 'assignment_pending') {
         return next(ApiError.badRequest('Staff is already assigned or requested this shift'));
       }
-      existing.status = 'approved';
+      existing.status = 'assignment_pending';
     } else {
-      schedule.shifts.push({ date, shiftType, status: 'approved' });
+      schedule.shifts.push({ date, shiftType, status: 'assignment_pending' });
     }
 
     await schedule.save();
@@ -374,6 +394,36 @@ exports.assignStaffToShift = async (req, res, next) => {
     } catch (emailErr) {
       console.error('Failed to send shift assignment email:', emailErr);
     }
+
+    res.status(200).json({ success: true, data: schedule });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.respondAssignment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { shiftId, action } = req.body; // action: 'approved' or 'rejected'
+
+    if (!['approved', 'rejected'].includes(action)) {
+      return next(ApiError.badRequest('Action must be approved or rejected'));
+    }
+
+    const schedule = await WorkSchedule.findOne({ _id: id, staff: req.user._id });
+    if (!schedule) {
+      return next(ApiError.notFound('Schedule not found'));
+    }
+
+    const shift = schedule.shifts.id(shiftId);
+    if (!shift) return next(ApiError.notFound('Shift not found'));
+
+    if (shift.status !== 'assignment_pending') {
+      return next(ApiError.badRequest('Shift is not pending for assignment response'));
+    }
+
+    shift.status = action;
+    await schedule.save();
 
     res.status(200).json({ success: true, data: schedule });
   } catch (error) {

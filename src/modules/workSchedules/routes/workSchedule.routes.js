@@ -7,6 +7,7 @@ router.use(protect);
 
 router.post('/', restrictTo('parking_staff'), workScheduleController.createOrUpdate);
 router.put('/:id/leave-request', restrictTo('parking_staff'), workScheduleController.requestLeave);
+router.put('/:id/respond-assignment', restrictTo('parking_staff'), workScheduleController.respondAssignment);
 router.get('/my', restrictTo('parking_staff'), workScheduleController.getMySchedules);
 router.get('/availability', restrictTo('parking_staff'), workScheduleController.getAvailability);
 

@@ -510,11 +510,14 @@ class ParkingSessionService {
 
         // Early Arrival Fee (if they enter before the scheduled start time)
         if (session.entryTime < scheduledStart) {
-          const earlyCalc = calculateOvertimeFee(session.entryTime, scheduledStart, session.vehicleType.pricing, 'early');
-          overtimeFee += earlyCalc.fee;
-          surchargeLogs = surchargeLogs.concat(earlyCalc.surchargeLogs);
-          overtimeBlocks += earlyCalc.overtimeBlocks;
-          isOvertime = true;
+          const earlyArrivalMs = scheduledStart.getTime() - session.entryTime.getTime();
+          if (earlyArrivalMs > 15 * 60 * 1000) {
+            const earlyCalc = calculateOvertimeFee(session.entryTime, scheduledStart, session.vehicleType.pricing, 'early');
+            overtimeFee += earlyCalc.fee;
+            surchargeLogs = surchargeLogs.concat(earlyCalc.surchargeLogs);
+            overtimeBlocks += earlyCalc.overtimeBlocks;
+            isOvertime = true;
+          }
         }
 
         // Late Departure / Overtime Fee (if they exit after the scheduled end time)
@@ -523,11 +526,13 @@ class ParkingSessionService {
           const lateHours = overtimeMs / (1000 * 60 * 60);
           overtimeHours = lateHours;
           
-          const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
-          overtimeFee += overtimeCalc.fee;
-          surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
-          overtimeBlocks += overtimeCalc.overtimeBlocks;
-          isOvertime = true;
+          if (lateHours > 15 / 60) {
+            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
+            overtimeFee += overtimeCalc.fee;
+            surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
+            overtimeBlocks += overtimeCalc.overtimeBlocks;
+            isOvertime = true;
+          }
         }
       }
     } else {
