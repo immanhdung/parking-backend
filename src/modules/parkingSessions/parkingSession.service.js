@@ -10,6 +10,7 @@ const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { calculateParkingFee, calculateOvertimeFee } = require('../../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
+const { toAbsoluteDateRange } = require('../../utils/dateUtils');
 
 /** How far ahead (in ms) to protect upcoming bookings from walk-in check-ins */
 const WALK_IN_BUFFER_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -56,9 +57,7 @@ async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null
     }).sort({ scheduledDate: 1, startTime: 1 });
 
     if (upcomingBooking) {
-      const [sH, sM] = upcomingBooking.startTime.split(':').map(Number);
-      const bookingStart = new Date(upcomingBooking.scheduledDate);
-      bookingStart.setHours(sH, sM, 0, 0);
+      const bookingStart = toAbsoluteDateRange(upcomingBooking.scheduledDate, upcomingBooking.startTime, upcomingBooking.endTime).start;
       if (bookingStart >= now && bookingStart <= bufferEnd) {
         throw ApiError.badRequest('This slot has an upcoming booking soon. Please choose another slot.');
       }
@@ -82,9 +81,7 @@ async function findWalkInSlot(parkingLotId, vehicleTypeId, specificSlotId = null
     }).sort({ scheduledDate: 1, startTime: 1 });
 
     if (upcomingBooking) {
-      const [sH, sM] = upcomingBooking.startTime.split(':').map(Number);
-      const bookingStart = new Date(upcomingBooking.scheduledDate);
-      bookingStart.setHours(sH, sM, 0, 0);
+      const bookingStart = toAbsoluteDateRange(upcomingBooking.scheduledDate, upcomingBooking.startTime, upcomingBooking.endTime).start;
       // Skip if the next booking starts within the buffer window
       if (bookingStart >= now && bookingStart <= bufferEnd) continue;
     }
@@ -495,18 +492,11 @@ class ParkingSessionService {
       fee = session.booking.estimatedFee || 0; // Base fee is the booking fee
 
       if (session.booking.endTime && session.booking.startTime && session.booking.scheduledDate) {
-        const dStr = session.booking.scheduledDate;
-        const [startH, startM] = session.booking.startTime.split(':').map(Number);
-        const scheduledStart = new Date(dStr);
-        scheduledStart.setHours(startH, startM, 0, 0);
-
-        const [endH, endM] = session.booking.endTime.split(':').map(Number);
-        const scheduledEnd = new Date(dStr);
-        scheduledEnd.setHours(endH, endM, 0, 0);
-        
-        if (scheduledEnd < scheduledStart) {
-          scheduledEnd.setDate(scheduledEnd.getDate() + 1);
-        }
+        const { start: scheduledStart, end: scheduledEnd } = toAbsoluteDateRange(
+          session.booking.scheduledDate,
+          session.booking.startTime,
+          session.booking.endTime
+        );
 
         // Early Arrival Fee (if they enter before the scheduled start time)
         if (session.entryTime < scheduledStart) {

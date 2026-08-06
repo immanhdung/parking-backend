@@ -7,6 +7,7 @@ const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
 const { suggestOptimalSlot } = require('../../utils/helpers');
 const { emitSlotUpdate } = require('../../sockets/socket.server');
+const { toAbsoluteDateRange } = require('../../utils/dateUtils');
 
 const LOCK_DURATION_MS = 3 * 60 * 1000; // 3 minutes
 
@@ -249,10 +250,8 @@ class ParkingSlotService {
         let [eH, eM] = upcoming.endTime.split(':').map(Number);
         if (eH < sH || (eH === sH && eM <= sM)) eH += 24; // cross-midnight
 
-        const bookingStart = new Date(upcoming.scheduledDate);
-        bookingStart.setHours(sH, sM, 0, 0);
-        const durationMs = ((eH * 60 + eM) - (sH * 60 + sM)) * 60 * 1000;
-        const bookingEnd = new Date(bookingStart.getTime() + durationMs);
+        const bookingStart = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).start;
+        const bookingEnd   = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).end;
 
         const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
         const effectiveEnd   = new Date(bookingEnd.getTime()   + CHECKOUT_BUFFER_MS);
@@ -290,8 +289,7 @@ class ParkingSlotService {
           // Staff Live Map: flag as reserved if effective start is within 30 min
           for (const upcoming of upcomingBookings) {
             const [sH, sM] = upcoming.startTime.split(':').map(Number);
-            const bookingStart = new Date(upcoming.scheduledDate);
-            bookingStart.setHours(sH, sM, 0, 0);
+            const bookingStart = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).start;
             const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
             if (effectiveStart >= now && effectiveStart <= staffWindowEnd) {
               slotObj.computedStatus = 'reserved';
@@ -316,14 +314,11 @@ class ParkingSlotService {
           slotObj.currentBooking;              // fallback: direct slot field
 
         if (occupantBooking?.endTime && occupantBooking?.scheduledDate) {
-          // Build absolute end time, handling cross-midnight
-          const [sh, sm] = (occupantBooking.startTime || '00:00').split(':').map(Number);
-          const [eh, em] = occupantBooking.endTime.split(':').map(Number);
-          const plainEnd = new Date(occupantBooking.scheduledDate);
-          plainEnd.setHours(eh, em, 0, 0);
-          if (eh < sh || (eh === sh && em <= sm)) {
-            plainEnd.setDate(plainEnd.getDate() + 1); // cross-midnight
-          }
+          const { end: plainEnd } = toAbsoluteDateRange(
+            occupantBooking.scheduledDate,
+            occupantBooking.startTime || '00:00',
+            occupantBooking.endTime
+          );
           const effectiveSessionEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
 
           if (effectiveSessionEnd <= wantedStart) {
@@ -491,11 +486,11 @@ class ParkingSlotService {
           ? await require('../bookings/booking.model').findById(slot.currentBooking).select('scheduledDate startTime endTime').lean()
           : null;
         if (currentBooking?.endTime && currentBooking?.scheduledDate) {
-          const [sh, sm] = (currentBooking.startTime || '00:00').split(':').map(Number);
-          const [eh, em] = currentBooking.endTime.split(':').map(Number);
-          const plainEnd = new Date(currentBooking.scheduledDate);
-          plainEnd.setHours(eh, em, 0, 0);
-          if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1);
+          const { end: plainEnd } = toAbsoluteDateRange(
+            currentBooking.scheduledDate,
+            currentBooking.startTime || '00:00',
+            currentBooking.endTime
+          );
           const effectiveEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
           canProceed = effectiveEnd <= new Date(wantedStart);
         } else {
@@ -508,11 +503,11 @@ class ParkingSlotService {
             : null;
           const sessBooking = sess?.booking;
           if (sessBooking?.endTime && sessBooking?.scheduledDate) {
-            const [sh, sm] = (sessBooking.startTime || '00:00').split(':').map(Number);
-            const [eh, em] = sessBooking.endTime.split(':').map(Number);
-            const plainEnd = new Date(sessBooking.scheduledDate);
-            plainEnd.setHours(eh, em, 0, 0);
-            if (eh < sh || (eh === sh && em <= sm)) plainEnd.setDate(plainEnd.getDate() + 1);
+            const { end: plainEnd } = toAbsoluteDateRange(
+              sessBooking.scheduledDate,
+              sessBooking.startTime || '00:00',
+              sessBooking.endTime
+            );
             const effectiveEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
             canProceed = effectiveEnd <= new Date(wantedStart);
           }

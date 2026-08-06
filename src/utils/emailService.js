@@ -74,7 +74,7 @@ async function sendMail(to, subject, html) {
  * Overdue slot relocation notification.
  * Sent to the user whose session was administratively moved to a new slot.
  */
-async function sendOverdueRelocationEmail({ to, userName, oldSlotCode, newSlotCode, floorName, zoneName, lotName, overdueMinutes }) {
+async function sendOverdueRelocationEmail({ to, userName, licensePlate, oldSlotCode, newSlotCode, floorName, zoneName, lotName }) {
   const subject = `⚠️ [ParkingBuilding] Your vehicle has been relocated — ${oldSlotCode} → ${newSlotCode}`;
   const html = `
 <!DOCTYPE html>
@@ -117,7 +117,7 @@ async function sendOverdueRelocationEmail({ to, userName, oldSlotCode, newSlotCo
       <p>Hi <strong>${userName}</strong>,</p>
 
       <div class="alert-box">
-        <p>⏰ Your vehicle has been parked <strong>${overdueMinutes} minute(s) over</strong> the scheduled end time.
+        <p>⏰ Your vehicle with license plate <strong>${licensePlate}</strong> has exceeded the scheduled end time.
         To free the reserved spot for the next customer, your session has been <strong>administratively moved</strong>.</p>
       </div>
 
@@ -131,7 +131,7 @@ async function sendOverdueRelocationEmail({ to, userName, oldSlotCode, newSlotCo
         <tr><td>Parking Lot</td><td>${lotName}</td></tr>
         <tr><td>Floor / Zone</td><td>${floorName}${zoneName ? ' / ' + zoneName : ''}</td></tr>
         <tr><td>New Slot</td><td>${newSlotCode}</td></tr>
-        <tr><td>Overdue By</td><td>${overdueMinutes} minute(s)</td></tr>
+        <tr><td>License Plate</td><td>${licensePlate}</td></tr>
       </table>
 
       <div class="action-note">
