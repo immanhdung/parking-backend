@@ -525,20 +525,6 @@ class ParkingSessionService {
           }
         }
       }
-    } else if (session.isRelocated) {
-      // ── Relocated walk-in ──────────────────────────────────────────────────
-      // The session was moved by the overdue worker (booking ref was cleared).
-      // Charge full block-based fee from actual entryTime → exitTime.
-      // advancePayment (prepaid booking fee) is subtracted automatically below.
-      const calculated = calculateParkingFee(
-        session.entryTime,
-        exitTime,
-        session.vehicleType.pricing
-      );
-      fee = calculated.fee;
-      totalBlocks = calculated.totalBlocks;
-      dayBlocksCount = calculated.dayBlocksCount;
-      nightBlocksCount = calculated.nightBlocksCount;
     } else {
       // Walk-in check-in, calculate normal fee
       const calculated = calculateParkingFee(

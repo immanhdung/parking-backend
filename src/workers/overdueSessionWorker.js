@@ -197,13 +197,12 @@ const scanOverdueSessions = async () => {
         if (replacement) {
           // 1. Move session → new slot
           //    Set isRelocated = true so the worker never touches this session again.
-          //    Clear booking reference so it behaves as a walk-in from this point.
+          //    We KEEP the booking reference intact so UI and Fee calculation still behave properly.
           await ParkingSession.findByIdAndUpdate(session._id, {
             slot:        replacement._id,
             floor:       replacement.floor?._id || replacement.floor,
             zone:        replacement.zone?._id  || replacement.zone,
             isRelocated: true,  // ← treat as walk-in; no further auto-relocation
-            booking:     null,  // ← detach from original booking (booking doc itself unchanged)
             notes: `${session.notes ? session.notes + ' | ' : ''}Auto-relocated from ${oldSlot?.slotCode} (overdue ${overdueMinutes} min)`,
           });
 
