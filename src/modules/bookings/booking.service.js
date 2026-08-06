@@ -197,13 +197,14 @@ class BookingService {
     let finalExitTime = new Date(exitTime);
 
     if (resolvedVehicleInfo && resolvedVehicleInfo.licensePlate) {
-      // Check if THIS USER has an active monthly pass for this vehicle at this parking lot
+      // Check if THIS USER has an active (or paid-pending) monthly pass for this vehicle at this parking lot
       const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
       const activePass = await MonthlyPass.findOne({
         user: userId,
         licensePlate: resolvedVehicleInfo.licensePlate.toUpperCase(),
         parkingLot: parkingLot,
-        status: 'active',
+        status: { $in: ['active', 'pending'] },
+        paymentStatus: 'paid',  // only block if actually paid
         startDate: { $lte: finalExitTime },
         endDate: { $gte: finalEntryTime }
       });

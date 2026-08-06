@@ -271,13 +271,17 @@ class PaymentService {
     const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNumber}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${accountName}`;
 
     // Create pending bank_transfer payment
+    // Use session's fee breakdown if available; otherwise treat full amount as base fee
+    const payBaseFee = session.baseFee > 0 ? session.baseFee : amount;
+    const payOvertimeFee = session.overtimeFee || 0;
+
     const payment = await Payment.create({
       parkingSession: sessionId,
       user: session.user,
       parkingLot: session.parkingLot,
       amount,
-      baseFee: session.baseFee,
-      overtimeFee: session.overtimeFee,
+      baseFee: payBaseFee,
+      overtimeFee: payOvertimeFee,
       method: 'bank_transfer',
       status: 'pending',
       transferContent,
@@ -632,7 +636,18 @@ class PaymentService {
     // Confirm payment
     payment.status = 'completed';
     payment.transactionId = referenceCode || String(id);
-    payment.paidAt = transactionDate ? new Date(transactionDate) : new Date();
+    // SEPay sends transactionDate in Vietnam local time (ICT, UTC+7) without timezone info.
+    // On Render (UTC server), new Date("2026-08-06 22:58:00") treats it as UTC → wrong.
+    // Fix: replace the space separator and append +07:00 so JS parses it as Vietnam time.
+    let paidAtDate = new Date();
+    if (transactionDate) {
+      const normalised = String(transactionDate).trim().replace(' ', 'T');
+      // If it already has a timezone offset, use as-is; otherwise append +07:00
+      paidAtDate = /[Zz]|[+-]\d{2}:?\d{2}$/.test(normalised)
+        ? new Date(normalised)
+        : new Date(`${normalised}+07:00`);
+    }
+    payment.paidAt = paidAtDate;
     payment.gatewayResponse = webhookData;
     await payment.save();
 
