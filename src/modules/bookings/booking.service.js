@@ -213,6 +213,16 @@ class BookingService {
         throw ApiError.badRequest('This vehicle already has an active monthly pass for this parking lot. Booking is not required.');
       }
 
+      // Check if the vehicle is currently parked (has an active session)
+      const ParkingSession = require('../parkingSessions/parkingSession.model');
+      const activeSession = await ParkingSession.findOne({
+        'vehicleInfo.licensePlate': resolvedVehicleInfo.licensePlate,
+        status: 'active'
+      });
+      if (activeSession) {
+        throw ApiError.badRequest(`This vehicle (${resolvedVehicleInfo.licensePlate}) is currently parked.`);
+      }
+
       // Check for overlapping bookings for the same license plate
       const existingBookings = await Booking.find({
         'vehicleInfo.licensePlate': resolvedVehicleInfo.licensePlate,
@@ -245,9 +255,9 @@ class BookingService {
 
     // Extract ICT hours/minutes from UTC Date (getHours() uses server-local TZ, which is UTC on Vercel)
     const ictEntry = new Date(finalEntryTime.getTime() + TZ_OFFSET_MS);
-    const ictExit  = new Date(finalExitTime.getTime()  + TZ_OFFSET_MS);
+    const ictExit = new Date(finalExitTime.getTime() + TZ_OFFSET_MS);
     let finalStartTime = `${String(ictEntry.getUTCHours()).padStart(2, '0')}:${String(ictEntry.getUTCMinutes()).padStart(2, '0')}`;
-    let finalEndTime   = `${String(ictExit.getUTCHours()).padStart(2, '0')}:${String(ictExit.getUTCMinutes()).padStart(2, '0')}`;
+    let finalEndTime = `${String(ictExit.getUTCHours()).padStart(2, '0')}:${String(ictExit.getUTCMinutes()).padStart(2, '0')}`;
 
     let recommendedSlot = null;
 
