@@ -452,12 +452,18 @@ class BookingService {
     }
 
     // Clear the booking reference from the slot.
-    // The slot's physical status remains unchanged (it's 'available' since we no longer
-    // set it to 'reserved' on booking creation — only 'occupied' on check-in).
+    // Also reset status → 'available' if no active session is sitting in the slot,
+    // because the overdue-worker may have set it to 'reserved' for this booking.
     if (booking.assignedSlot) {
+      const slotDoc = await ParkingSlot.findById(booking.assignedSlot).select('currentSession status slotCode').lean();
+      const updateFields = { currentBooking: null };
+      if (!slotDoc?.currentSession) {
+        // No physical car in the slot → safe to mark as available
+        updateFields.status = 'available';
+      }
       const releasedSlot = await ParkingSlot.findByIdAndUpdate(
         booking.assignedSlot,
-        { currentBooking: null },
+        { $set: updateFields },
         { new: true }
       );
       // Emit real-time update so clients know the booking was cancelled for this slot
