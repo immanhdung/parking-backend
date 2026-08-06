@@ -120,18 +120,46 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
 };
 
 /**
- * Calculate overtime fee
- * When customer stays past their booking end time, charge by extra blocks (same as normal parking)
- * @param {Date} scheduledEnd - Booking scheduled end time
- * @param {Date} actualExit - Actual exit time
- * @param {Object} pricing - { dayBlockRate, nightBlockRate }
- * @param {String} logType - Label for the log (e.g. 'late', 'early', 'fallback')
+ * Calculate overtime / late-departure fee.
+ *
+ * The pre-paid booking already covers the full 4-hour block that contains
+ * `scheduledEnd`.  We must NOT double-charge that block.  Only charge for
+ * complete new blocks that start AFTER the block which contains scheduledEnd.
+ *
+ * Example:
+ *   Booking  20:00 – 20:03  → covers block 20:00 – 00:00 (paid)
+ *   Car stays until 22:00   → still inside paid block → fee = 0
+ *   Car stays until 00:10   → enters next block 00:00 – 04:00 → fee = 1 block
+ *
+ * @param {Date}   scheduledStart - Absolute start time of the booking (used to reconstruct block grid)
+ * @param {Date}   scheduledEnd   - Booking scheduled end time
+ * @param {Date}   actualExit     - Actual exit time
+ * @param {Object} pricing        - { dayBlockRate, nightBlockRate }
+ * @param {String} logType        - 'late' | 'early' | 'fallback'
  */
-const calculateOvertimeFee = (scheduledEnd, actualExit, pricing, logType = 'late') => {
+const calculateOvertimeFee = (scheduledEnd, actualExit, pricing, logType = 'late', scheduledStart = null) => {
   if (actualExit <= scheduledEnd) return { fee: 0, surchargeLogs: [], overtimeBlocks: 0 };
 
-  // Reuse the same block-based logic for the overtime period
-  const { fee, logs, totalBlocks } = calculateParkingFee(scheduledEnd, actualExit, pricing);
+  // ── Find the next block boundary after scheduledEnd ──────────────────────
+  // The block grid is anchored at scheduledStart (or scheduledEnd if not provided).
+  // Each block is exactly 4 hours wide.
+  // We need the first boundary that is strictly AFTER scheduledEnd.
+  const anchor = scheduledStart || scheduledEnd;
+  const elapsedMs = scheduledEnd.getTime() - anchor.getTime();
+  const blockMs = 4 * 60 * 60 * 1000; // 4 hours
+  // How far into the current block are we at scheduledEnd?
+  const msIntoCurrentBlock = elapsedMs % blockMs;
+  // Time remaining in the current (already-paid) block
+  const msToNextBoundary = msIntoCurrentBlock === 0 ? 0 : (blockMs - msIntoCurrentBlock);
+  const nextBlockBoundary = new Date(scheduledEnd.getTime() + msToNextBoundary);
+
+  // If the actual exit is still within the paid block, no extra charge
+  if (actualExit <= nextBlockBoundary) {
+    return { fee: 0, surchargeLogs: [], overtimeBlocks: 0 };
+  }
+
+  // Only charge for the time AFTER the paid block ends
+  const { fee, logs, totalBlocks } = calculateParkingFee(nextBlockBoundary, actualExit, pricing);
 
   const surchargeLogs = logs.map(log => ({
     type: logType,

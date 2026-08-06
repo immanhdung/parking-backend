@@ -517,7 +517,7 @@ class ParkingSessionService {
           overtimeHours = lateHours;
           
           if (lateHours > 15 / 60) {
-            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late');
+            const overtimeCalc = calculateOvertimeFee(scheduledEnd, exitTime, session.vehicleType.pricing, 'late', scheduledStart);
             overtimeFee += overtimeCalc.fee;
             surchargeLogs = surchargeLogs.concat(overtimeCalc.surchargeLogs);
             overtimeBlocks += overtimeCalc.overtimeBlocks;
