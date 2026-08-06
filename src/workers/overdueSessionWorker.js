@@ -25,7 +25,7 @@
 const ParkingSession = require('../modules/parkingSessions/parkingSession.model');
 const ParkingSlot    = require('../modules/parkingSlots/parkingSlot.model');
 const Booking        = require('../modules/bookings/booking.model');
-const { emitOverdueAlert } = require('../sockets/socket.server');
+const { emitOverdueAlert, emitToUser } = require('../sockets/socket.server');
 const { sendOverdueRelocationEmail } = require('../utils/emailService');
 const logger = require('../utils/logger');
 const { toAbsoluteDateRange } = require('../utils/dateUtils');
@@ -205,6 +205,16 @@ const scanOverdueSessions = async () => {
             isRelocated: true,  // ← treat as walk-in; no further auto-relocation
             notes: `${session.notes ? session.notes + ' | ' : ''}Auto-relocated from ${oldSlot?.slotCode} (overdue ${overdueMinutes} min)`,
           });
+
+          // Emit socket event to customer to auto-refresh FE
+          if (session.user) {
+            const userId = session.user._id || session.user;
+            emitToUser(userId.toString(), 'newNotification', {
+              type: 'relocation_success',
+              sessionId: session._id,
+              message: 'Your vehicle has been relocated.'
+            });
+          }
 
           // 2. Free original slot
           await ParkingSlot.findByIdAndUpdate(oldSlot?._id, {
