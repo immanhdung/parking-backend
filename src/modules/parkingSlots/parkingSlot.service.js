@@ -267,8 +267,8 @@ class ParkingSlotService {
       const slotObj = slot.toObject();
       slotObj.computedStatus = slotObj.status; // default: same as real DB status
 
-      // ── Case 1: physically available → check upcoming booking conflicts ──
-      if (slotObj.status === 'available') {
+      // ── Case 1: physically empty (available or reserved) → check upcoming booking conflicts ──
+      if (slotObj.status === 'available' || slotObj.status === 'reserved') {
         const upcomingBookings = await Booking.find({
           assignedSlot: slot._id,
           status: { $in: ['pending', 'approved'] },
@@ -284,22 +284,35 @@ class ParkingSlotService {
               startTime:   conflict.startTime,
               endTime:     conflict.endTime,
             };
+          } else {
+            slotObj.computedStatus = 'available';
+            slotObj.upcomingBooking = null;
           }
         } else {
-          // Staff Live Map: flag as reserved if effective start is within 30 min
+          // Staff Live Map: flag as reserved if any booking overlaps with [now, staffWindowEnd]
+          let foundConflict = false;
           for (const upcoming of upcomingBookings) {
-            const [sH, sM] = upcoming.startTime.split(':').map(Number);
             const bookingStart = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).start;
+            const bookingEnd   = toAbsoluteDateRange(upcoming.scheduledDate, upcoming.startTime, upcoming.endTime).end;
+            
             const effectiveStart = new Date(bookingStart.getTime() - EARLY_CHECKIN_BUFFER_MS);
-            if (effectiveStart >= now && effectiveStart <= staffWindowEnd) {
+            const isNoShow = bookingEnd <= now;
+            const effectiveEnd   = new Date(bookingEnd.getTime() + (isNoShow ? 0 : CHECKOUT_BUFFER_MS));
+            
+            if (effectiveStart <= staffWindowEnd && effectiveEnd > now) {
               slotObj.computedStatus = 'reserved';
               slotObj.upcomingBooking = {
                 bookingCode: upcoming.bookingCode,
                 startTime:   upcoming.startTime,
                 endTime:     upcoming.endTime,
               };
+              foundConflict = true;
               break;
             }
+          }
+          if (!foundConflict) {
+            slotObj.computedStatus = 'available';
+            slotObj.upcomingBooking = null;
           }
         }
       }
