@@ -564,13 +564,17 @@ class ParkingSessionService {
       session.paymentStatus = 'paid';
     } else if (feeToPay > 0) {
       // Auto-record cash payment when staff manually checks out the vehicle
+      // baseFee/overtimeFee in the payment reflect what's actually being charged NOW
+      // (after deducting any advance payment already paid)
+      const paidBaseFee = Math.max(0, fee - session.advancePayment);
+      const paidOvertimeFee = overtimeFee;
       const payment = await Payment.create({
         parkingSession: session._id,
         user: session.user,
         parkingLot: session.parkingLot,
         amount: feeToPay,
-        baseFee: fee,
-        overtimeFee: overtimeFee,
+        baseFee: paidBaseFee,
+        overtimeFee: paidOvertimeFee,
         paymentType: 'session_checkout',
         method: 'cash',
         status: 'completed',
