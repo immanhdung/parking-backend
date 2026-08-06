@@ -219,16 +219,22 @@ const scanOverdueSessions = async () => {
           // 2. Free original slot — reset status based on any upcoming booking
           {
             const now = new Date();
-            const upcomingBooking = await Booking.findOne({
-              slot: oldSlot?._id,
-              status: { $in: ['pending', 'confirmed'] },
-              endTime: { $gt: now },
+            // Reuse same query logic as slotNeededSoon to find any future booking for this slot
+            const upcomingBookings = await Booking.find({
+              assignedSlot: oldSlot?._id,          // ← correct field name
+              status: { $in: ['pending', 'approved'] }, // ← correct status values
             }).lean();
+            const hasUpcomingBooking = upcomingBookings.some(b => {
+              try {
+                const start = toAbsoluteDateRange(b.scheduledDate, b.startTime, b.endTime).start;
+                return start >= now;
+              } catch { return false; }
+            });
             await ParkingSlot.findByIdAndUpdate(oldSlot?._id, {
               $set: {
                 currentSession: null,
                 // If another user has an upcoming booking → 'reserved'; otherwise free it
-                status: upcomingBooking ? 'reserved' : 'available',
+                status: hasUpcomingBooking ? 'reserved' : 'available',
               },
             });
           }
