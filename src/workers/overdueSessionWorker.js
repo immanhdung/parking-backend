@@ -138,8 +138,9 @@ const scanOverdueSessions = async () => {
     const activeSessions = await ParkingSession.find({
       status: 'active',
       booking: { $ne: null },
+      isRelocated: { $ne: true }, // Skip sessions already relocated — they behave as walk-in
     })
-      .populate({ path: 'booking', select: 'endTime scheduledDate' })
+      .populate({ path: 'booking', select: 'endTime scheduledDate startTime' })
       .populate('parkingLot', 'name')
       .populate({ path: 'slot', populate: [
         { path: 'floor', select: 'name floorNumber' },
@@ -195,10 +196,14 @@ const scanOverdueSessions = async () => {
 
         if (replacement) {
           // 1. Move session → new slot
+          //    Set isRelocated = true so the worker never touches this session again.
+          //    Clear booking reference so it behaves as a walk-in from this point.
           await ParkingSession.findByIdAndUpdate(session._id, {
-            slot:  replacement._id,
-            floor: replacement.floor?._id || replacement.floor,
-            zone:  replacement.zone?._id  || replacement.zone,
+            slot:        replacement._id,
+            floor:       replacement.floor?._id || replacement.floor,
+            zone:        replacement.zone?._id  || replacement.zone,
+            isRelocated: true,  // ← treat as walk-in; no further auto-relocation
+            booking:     null,  // ← detach from original booking (booking doc itself unchanged)
             notes: `${session.notes ? session.notes + ' | ' : ''}Auto-relocated from ${oldSlot?.slotCode} (overdue ${overdueMinutes} min)`,
           });
 

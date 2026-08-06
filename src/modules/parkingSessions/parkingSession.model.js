@@ -94,6 +94,9 @@ const parkingSessionSchema = new mongoose.Schema(
       }
     ],
     overtimeNotificationSent: { type: Boolean, default: false },
+    // Set to true after the overdue worker has relocated this session to a new slot.
+    // Once relocated, the session behaves like a walk-in (no further auto-relocation).
+    isRelocated: { type: Boolean, default: false },
     // Payment
     paymentStatus: {
       type: String,
