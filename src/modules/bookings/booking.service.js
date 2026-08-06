@@ -300,7 +300,8 @@ class BookingService {
             occupantBooking.endTime
           );
           const effectiveOccupantEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
-          occupantEndOk = effectiveOccupantEnd <= finalEntryTime;
+          const now = new Date();
+          occupantEndOk = (effectiveOccupantEnd > now && effectiveOccupantEnd <= finalEntryTime);
         }
 
         if (!occupantEndOk) {

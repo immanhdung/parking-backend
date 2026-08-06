@@ -320,8 +320,9 @@ class ParkingSlotService {
             occupantBooking.endTime
           );
           const effectiveSessionEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+          const now = new Date();
 
-          if (effectiveSessionEnd <= wantedStart) {
+          if (effectiveSessionEnd > now && effectiveSessionEnd <= wantedStart) {
             // Car will have left by wantedStart — check for OTHER future booking conflicts
             const upcomingBookings = await Booking.find({
               assignedSlot: slot._id,
