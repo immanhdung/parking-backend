@@ -82,8 +82,8 @@ class BookingService {
 
     const filter = {};
 
-    // Parking user can only see own bookings
-    if (user.role === 'parking_user') {
+    // Parking user / customer sees their own bookings unless querying for slot availability check (when parkingLot is specified)
+    if ((user?.role === 'parking_user' || user?.role === 'customer') && !parkingLot) {
       filter.user = user._id;
     } else if (userId) {
       filter.user = userId;

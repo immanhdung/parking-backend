@@ -101,7 +101,7 @@ router.get('/my', ctrl.myBookings);
  *       201:
  *         description: Booking created with QR code
  */
-router.get('/', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.getBookings);
+router.get('/', ctrl.getBookings);
 router.post('/', createBookingValidator, validate, ctrl.create);
 
 /**

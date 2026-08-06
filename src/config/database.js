@@ -3,9 +3,13 @@ const logger = require('../utils/logger');
 
 const connectDB = async () => {
   try {
-    const uri = process.env.NODE_ENV === 'production'
+    const uri = (process.env.NODE_ENV === 'production'
       ? process.env.MONGODB_URI_PROD
-      : process.env.MONGODB_URI;
+      : process.env.MONGODB_URI) || process.env.MONGODB_URI || process.env.MONGODB_URI_PROD;
+
+    if (!uri) {
+      throw new Error('MongoDB URI is not defined in environment variables (MONGODB_URI or MONGODB_URI_PROD)');
+    }
 
     const conn = await mongoose.connect(uri, {
       autoIndex: process.env.NODE_ENV !== 'production',
