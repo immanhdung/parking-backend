@@ -305,10 +305,85 @@ const scanOverdueSessions = async () => {
     }
 
     logger.info(`[OverdueWorker] Scan complete. ${activeSessions.length} active session(s) checked.`);
+
+    // ─── Scan expired reserved bookings (no check-in) ──────────────────────────
+    // If a user booked but never checked in, their slot stays 'reserved' forever.
+    // After the booking's endTime passes, we release it back to 'available'.
+    await scanExpiredReservedBookings(now);
+
   } catch (err) {
     logger.error(`[OverdueWorker] Error during scan: ${err.message}`);
   }
 };
+
+/**
+ * Release 'reserved' slots whose booking end time has passed
+ * and the user never started a parking session (no check-in).
+ */
+async function scanExpiredReservedBookings(now) {
+  try {
+    // Find approved/pending bookings that are old enough to be considered no-shows
+    const candidates = await Booking.find({
+      status: { $in: ['pending', 'approved'] },
+    })
+      .populate('assignedSlot', 'status slotCode currentSession')
+      .lean();
+
+    let released = 0;
+    for (const booking of candidates) {
+      if (!booking.scheduledDate || !booking.endTime) continue;
+
+      const { end } = toAbsoluteDateRange(booking.scheduledDate, booking.startTime || '00:00', booking.endTime);
+      const releaseTime = new Date(end.getTime()); // Released exactly at exit time
+
+      // Only process if past the exit time
+      if (now < releaseTime) continue;
+
+      const slot = booking.assignedSlot;
+      if (!slot) continue;
+
+      // Only release if the slot is 'reserved' and has no active session
+      if (slot.status !== 'reserved' || slot.currentSession) continue;
+
+      // Mark booking as no-show (user never checked in)
+      await Booking.findByIdAndUpdate(booking._id, {
+        $set: { status: 'no_show' },
+      });
+
+      // Check if another future booking exists for this slot before freeing it
+      const futureBooking = await Booking.find({
+        assignedSlot: slot._id,
+        status: { $in: ['pending', 'approved'] },
+      }).lean();
+      const hasFuture = futureBooking.some(b => {
+        try {
+          const s = toAbsoluteDateRange(b.scheduledDate, b.startTime || '00:00', b.endTime).start;
+          return s >= now;
+        } catch { return false; }
+      });
+
+      await ParkingSlot.findByIdAndUpdate(slot._id, {
+        $set: {
+          status: hasFuture ? 'reserved' : 'available',
+          currentBooking: hasFuture ? slot.currentBooking : null,
+        },
+      });
+
+      logger.info(
+        `[OverdueWorker] 🔓 Released reserved slot ${slot.slotCode} ` +
+        `(booking ${booking._id} expired — no check-in). New status: ${hasFuture ? 'reserved' : 'available'}`
+      );
+      released++;
+    }
+
+    if (released > 0) {
+      logger.info(`[OverdueWorker] Released ${released} expired reserved slot(s).`);
+    }
+  } catch (err) {
+    logger.error(`[OverdueWorker] Error in scanExpiredReservedBookings: ${err.message}`);
+  }
+}
+
 
 // ─── Start / Stop ──────────────────────────────────────────────────────────────
 
