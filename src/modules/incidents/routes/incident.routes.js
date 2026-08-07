@@ -10,7 +10,7 @@ const { protect, restrictTo } = require('../../../middleware/auth');
 // ===== SERVICE =====
 class IncidentService {
   async getAll(query, user) {
-    const { page = 1, limit = 10, sort = '-createdAt', status, type, severity, parkingLot } = query;
+    const { page = 1, limit = 10, sort = '-createdAt', status, type, severity, parkingLot, date } = query;
     const filter = {};
 
     if (user.role === 'parking_manager') filter.parkingLot = user.assignedParkingLot;
@@ -19,6 +19,13 @@ class IncidentService {
     if (status) filter.status = status;
     if (type) filter.type = type;
     if (severity) filter.severity = severity;
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
 
     return Pagination.paginate(Incident, filter, {
       page: parseInt(page),
@@ -62,10 +69,10 @@ class IncidentService {
   }
 
   async resolve(id, resolutionData, staffId, file) {
-    const { parkingSession, ...restResolution } = resolutionData;
+    const { parkingSession, status, ...restResolution } = resolutionData;
     const updateQuery = {
       $set: {
-        status: 'resolved',
+        status: status || 'resolved',
         resolution: { ...restResolution, resolvedBy: staffId, resolvedAt: new Date() },
       }
     };
