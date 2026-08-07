@@ -115,11 +115,74 @@ class ParkingLotService {
     const lot = await ParkingLot.findById(id);
     if (!lot) throw ApiError.notFound('Parking lot not found.');
 
-    lot.isDeleted = true;
-    lot.deletedAt = new Date();
-    await lot.save();
-    return { message: 'Parking lot deleted.' };
+    const mongoose = require('mongoose');
+    const Zone = require('../zones/zone.model');
+    const Booking = require('../bookings/booking.model');
+    const Payment = require('../payments/payment.model');
+    const MonthlyPass = require('../monthlyPasses/monthlyPass.model');
+    const Notification = require('../notifications/notification.model');
+    const User = require('../users/user.model');
+    const ParkingSession = require('../parkingSessions/parkingSession.model');
+    const lotObjectId = new mongoose.Types.ObjectId(id);
+
+    // ── Guard 1: Active sessions (cars still parked) ─────────────────────────
+    const activeSessions = await ParkingSession.countDocuments({ parkingLot: id, status: 'active' });
+    if (activeSessions > 0) {
+      throw ApiError.badRequest(
+        `Cannot delete: ${activeSessions} vehicle(s) are currently parked. Check out all vehicles first.`
+      );
+    }
+
+    // ── Pre-delete: cancel processing payments to prevent SEPay webhook crash ─
+    // Orphaned 'processing' payments would cause payment.service.js to throw
+    // "Payment not found" when the webhook arrives after deletion.
+    await Payment.updateMany(
+      { parkingLot: id, status: { $in: ['pending', 'processing'] } },
+      { $set: { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'Parking lot deleted by admin' } }
+    );
+
+    // ── Cascade delete ────────────────────────────────────────────────────────
+    // 1. Slots — native driver to bypass the pre-find isDeleted middleware
+    await ParkingSlot.collection.deleteMany({ parkingLot: lotObjectId });
+
+    // 2. Zones — bypass pre-find middleware
+    await Zone.collection.deleteMany({ parkingLot: lotObjectId });
+
+    // 3. Floors — bypass pre-find middleware
+    await Floor.collection.deleteMany({ parkingLot: lotObjectId });
+
+    // 4. Historical parking sessions (confirmed no active ones above)
+    await ParkingSession.deleteMany({ parkingLot: id });
+
+    // 5. All bookings (past/cancelled — upcoming already blocked above)
+    await Booking.deleteMany({ parkingLot: id });
+
+    // 6. Payments (processing ones already cancelled above)
+    await Payment.deleteMany({ parkingLot: id });
+
+    // 7. Monthly passes (active ones already blocked above)
+    await MonthlyPass.deleteMany({ parkingLot: id });
+
+    // 8. Notifications — best-effort
+    try {
+      await Notification.deleteMany({ 'data.parkingLotId': id.toString() });
+    } catch (_) { /* skip if notification model differs */ }
+
+    // 9. Unassign staff/managers — $pull only removes THIS lot's ref.
+    //    Users with other lots assigned remain fully functional.
+    await User.updateMany(
+      { assignedParkingLot: id },
+      { $pull: { assignedParkingLot: id } }
+    );
+
+    // 10. Delete the lot document itself
+    await ParkingLot.findByIdAndDelete(id);
+
+    return { message: `Parking lot "${lot.name}" and all related data deleted successfully.` };
   }
+
+
+
 
   async getSlotsSummary(parkingLotId) {
     const slots = await ParkingSlot.aggregate([

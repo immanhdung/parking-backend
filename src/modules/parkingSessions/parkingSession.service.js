@@ -430,7 +430,7 @@ class ParkingSessionService {
   /**
    * CHECK-OUT: End a parking session and calculate fee
    */
-  async checkOut(sessionId, staffId, io) {
+  async checkOut(sessionId, staffId, io, staffUser = null) {
     const session = await ParkingSession.findById(sessionId)
       .populate('vehicleType')
       .populate('slot')
@@ -439,6 +439,21 @@ class ParkingSessionService {
 
     if (!session) throw ApiError.notFound('Session not found.');
     if (session.status !== 'active') throw ApiError.badRequest('Session is not active.');
+
+    // ── Parking lot ownership check ────────────────────────────────────────
+    // Staff and managers can only check out sessions in their assigned lot(s).
+    // This mirrors the same validation already enforced in checkIn.
+    if (staffUser && staffUser.role !== 'system_admin') {
+      const assigned = staffUser.assignedParkingLot;
+      const sessionLotId = session.parkingLot?.toString();
+      const assignedIds = Array.isArray(assigned)
+        ? assigned.map(id => id.toString())
+        : assigned ? [assigned.toString()] : [];
+
+      if (assignedIds.length > 0 && !assignedIds.includes(sessionLotId)) {
+        throw ApiError.forbidden('This session does not belong to your assigned parking lot.');
+      }
+    }
 
     const exitTime = new Date();
     const durationMs = exitTime - session.entryTime;

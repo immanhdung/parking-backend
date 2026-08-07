@@ -22,7 +22,7 @@ class ParkingSessionController {
 
   checkOut = asyncHandler(async (req, res) => {
     const io = req.app.get('io');
-    const session = await parkingSessionService.checkOut(req.params.id, req.user._id, io);
+    const session = await parkingSessionService.checkOut(req.params.id, req.user._id, io, req.user);
     ApiResponse.success(res, 'Check-out successful. Please proceed to payment.', session);
   });
 
