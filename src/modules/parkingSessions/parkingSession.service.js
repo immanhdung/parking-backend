@@ -664,12 +664,14 @@ class ParkingSessionService {
       parkingLot: parkingLotId,
       status: 'active',
       isOvertime: false,
-    }).populate('booking', 'endTime scheduledDate').populate('user', 'fullName email');
+    }).populate('booking', 'startTime endTime scheduledDate').populate('user', 'fullName email');
 
     const now = new Date();
     const overdue = sessions.filter(s => {
-      if (!s.booking?.endTime) return false;
-      const end = new Date(`${s.booking.scheduledDate.toISOString().split('T')[0]}T${s.booking.endTime}:00`);
+      if (!s.booking?.endTime || !s.booking?.scheduledDate) return false;
+      // Use toAbsoluteDateRange (already imported) to correctly reconstruct ICT time
+      // Raw string concat `scheduledDate + endTime` is parsed as UTC on Render → 7-hour offset bug
+      const { end } = toAbsoluteDateRange(s.booking.scheduledDate, s.booking.startTime || '00:00', s.booking.endTime);
       return now > end;
     });
 

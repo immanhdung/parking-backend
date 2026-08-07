@@ -50,6 +50,15 @@ const generateQRCode = async (data) => {
  * @param {Date} exitTime
  * @param {Object} pricing - { dayBlockRate, nightBlockRate, dailyRate }
  */
+const ICT_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+
+/**
+ * Get ICT local hour from a UTC Date object.
+ * .getHours() returns UTC hour on Render/Vercel (UTC server), which is wrong.
+ * We must add TZ_OFFSET_MS first so the ICT hour is correct everywhere.
+ */
+const getICTHour = (d) => new Date(d.getTime() + ICT_OFFSET_MS).getUTCHours();
+
 const calculateParkingFee = (entryTime, exitTime, pricing) => {
   const durationMs = exitTime - entryTime;
   const durationHours = durationMs / (1000 * 60 * 60);
@@ -71,10 +80,12 @@ const calculateParkingFee = (entryTime, exitTime, pricing) => {
     // Subtract 1ms so an exact boundary (like 18:00:00) doesn't count as crossing into the next hour
     const effectiveEnd = new Date(blockEnd.getTime() - 1);
 
-    const startHour = currentStart.getHours();
-    const endHour = effectiveEnd.getHours();
+    // Use ICT hour (UTC+7) to correctly classify day vs night blocks
+    // .getHours() returns UTC hour on Render server — must use getICTHour() instead
+    const startHour = getICTHour(currentStart);
+    const endHour = getICTHour(effectiveEnd);
 
-    // 06:00 to 17:59 is daytime, 18:00 to 05:59 is nighttime
+    // 06:00 to 17:59 is daytime, 18:00 to 05:59 is nighttime (ICT)
     const isStartNight = startHour >= 18 || startHour < 6;
     const isEndNight = endHour >= 18 || endHour < 6;
 
@@ -260,7 +271,8 @@ const getDateRange = (period) => {
  * Determine if a time is peak hour (7-9 AM, 5-8 PM)
  */
 const isPeakHour = (date) => {
-  const hour = date.getHours();
+  // Use ICT hour (UTC+7) — .getHours() returns UTC hour on Render server
+  const hour = getICTHour(date);
   return (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 20);
 };
 
