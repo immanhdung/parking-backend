@@ -299,9 +299,15 @@ class BookingService {
             occupantBooking.startTime || '00:00',
             occupantBooking.endTime
           );
-          const effectiveOccupantEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
           const now = new Date();
-          occupantEndOk = (effectiveOccupantEnd > now && effectiveOccupantEnd <= finalEntryTime);
+          // Only allow booking if occupant's scheduled end is still FUTURE (not overdue).
+          // If plainEnd is already in the past, the car is overdue/relocated — treat as walk-in
+          // and block the slot indefinitely.
+          if (plainEnd > now) {
+            const effectiveOccupantEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
+            occupantEndOk = effectiveOccupantEnd <= finalEntryTime;
+          }
+          // else: booking already expired → car is overdue → occupantEndOk stays false
         }
 
         if (!occupantEndOk) {

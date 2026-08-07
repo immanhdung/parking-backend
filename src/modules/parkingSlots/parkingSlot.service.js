@@ -332,29 +332,39 @@ class ParkingSlotService {
             occupantBooking.startTime || '00:00',
             occupantBooking.endTime
           );
-          const effectiveSessionEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
-          const now = new Date();
+          const now2 = new Date();
 
-          if (effectiveSessionEnd > now && effectiveSessionEnd <= wantedStart) {
-            // Car will have left by wantedStart — check for OTHER future booking conflicts
-            const upcomingBookings = await Booking.find({
-              assignedSlot: slot._id,
-              status: { $in: ['pending', 'approved'] },
-            }).sort({ scheduledDate: 1, startTime: 1 }).lean();
+          // KEY CHECK: if the booking's scheduled end is already in the past,
+          // the car is OVERDUE (possibly relocated). Treat it as a walk-in —
+          // we have no idea when they'll leave, so keep the slot as occupied for ALL
+          // future windows. Do NOT apply any availability logic.
+          if (plainEnd > now2) {
+            // Booking is still within its scheduled window — check if the car
+            // will have left before wantedStart (+ 15 min checkout buffer).
+            const effectiveSessionEnd = new Date(plainEnd.getTime() + CHECKOUT_BUFFER_MS);
 
-            const conflict = findConflictingBooking(upcomingBookings);
-            if (conflict) {
-              slotObj.computedStatus = 'reserved';
-              slotObj.upcomingBooking = {
-                bookingCode: conflict.bookingCode,
-                startTime:   conflict.startTime,
-                endTime:     conflict.endTime,
-              };
-            } else {
-              slotObj.computedStatus = 'available';
+            if (effectiveSessionEnd <= wantedStart) {
+              // Car will have left by wantedStart — check for OTHER future booking conflicts
+              const upcomingBookings = await Booking.find({
+                assignedSlot: slot._id,
+                status: { $in: ['pending', 'approved'] },
+              }).sort({ scheduledDate: 1, startTime: 1 }).lean();
+
+              const conflict = findConflictingBooking(upcomingBookings);
+              if (conflict) {
+                slotObj.computedStatus = 'reserved';
+                slotObj.upcomingBooking = {
+                  bookingCode: conflict.bookingCode,
+                  startTime:   conflict.startTime,
+                  endTime:     conflict.endTime,
+                };
+              } else {
+                slotObj.computedStatus = 'available';
+              }
             }
+            // else: car still there during wanted window → keep 'occupied'
           }
-          // else: car still there during wanted window → keep 'occupied'
+          // else: booking already expired → car is overdue / walk-in → keep 'occupied' for ALL windows
         }
         // If no booking info (anonymous walk-in), can't determine end time → keep 'occupied'
       }
